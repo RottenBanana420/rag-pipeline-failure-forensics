@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
-import pytest
-
 from src.config import Settings
 from src.ingestion.chunker import Chunker
 from src.ingestion.models import Chunk, ProcessedDocument
