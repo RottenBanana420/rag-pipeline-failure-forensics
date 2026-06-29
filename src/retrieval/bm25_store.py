@@ -44,17 +44,7 @@ class BM25Store:
         if self._bm25 is None or not self._chunk_ids:
             return []
         scores = self._bm25.get_scores(_tokenize(query))
-
-        if len(set(scores)) == 1:
-            query_tokens = set(_tokenize(query))
-            scores = [
-                float(sum(1 for token in tokens if token in query_tokens))
-                for tokens in self._tokenized_corpus
-            ]
-        else:
-            scores = scores.tolist()
-
-        return list(zip(self._chunk_ids, scores, strict=True))
+        return list(zip(self._chunk_ids, scores.tolist(), strict=True))
 
     def count(self) -> int:
         return len(self._chunk_ids)
