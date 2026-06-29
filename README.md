@@ -28,3 +28,16 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | 5 | Visual Explorers & Frontend | Planned |
 | 6 | Evaluation Framework | Planned |
 | 7 | FastAPI, Docker, Portfolio Polish | Planned |
+
+### Phase 1 Progress
+
+| Component | Status |
+|-----------|--------|
+| Multi-format document loader (MD, TXT, HTML, PDF) | Done |
+| Configurable chunking strategies | Planned |
+| Embedding + ChromaDB storage | Planned |
+| BM25 index | Planned |
+| Deduplication | Planned |
+| Dense retrieval | Planned |
+| Sparse retrieval | Planned |
+| RRF fusion + reranker | Planned |

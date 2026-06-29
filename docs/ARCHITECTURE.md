@@ -1,33 +1,85 @@
 # Architecture Overview
 
-## 2026-06-28 — Phase 1 Scaffold
+## 2026-06-28 — Phase 1: Document Loader (Complete)
 
 ### Module Layout
 
 ```
 src/
   config.py           # Central settings via pydantic-settings (singleton)
-  ingestion/          # Document loaders, chunking strategies, deduplication
-  retrieval/          # Dense (ChromaDB), sparse (BM25), RRF fusion, reranker
-  generation/         # Grounded prompt, citation parser/verifier, confidence scorer
-  tracing/            # Trace/Span models, context manager, decorator, JSON+SQLite writers
-  analysis/           # Backward trace walker, failure categorizer, evidence chain builder
-  evaluation/         # Golden dataset runner, metric calculators, regression tracker
-  api/                # FastAPI app, route handlers
-  frontend/           # Streamlit or React query dashboard and trace explorer
+  ingestion/
+    models.py         # ProcessedDocument — universal output type for all loaders
+    loader.py         # DocumentLoader — dispatches by file extension
+    storage.py        # save_processed / load_processed / list_raw_files
+  retrieval/          # Dense (ChromaDB), sparse (BM25), RRF fusion, reranker [planned]
+  generation/         # Grounded prompt, citation parser/verifier, confidence scorer [planned]
+  tracing/            # Trace/Span models, context manager, decorator, JSON+SQLite writers [planned]
+  analysis/           # Backward trace walker, failure categorizer, evidence chain builder [planned]
+  evaluation/         # Golden dataset runner, metric calculators, regression tracker [planned]
+  api/                # FastAPI app, route handlers [planned]
+  frontend/           # Streamlit or React query dashboard and trace explorer [planned]
 scripts/
   seed_corpus.py      # Index sample docs for local testing
   run_eval.py         # Execute full eval suite and print metrics
 tests/
-  unit/ingestion/     # Per-module unit tests
-  unit/retrieval/
-  integration/        # End-to-end pipeline tests against real ChromaDB
+  fixtures/           # Sample files (sample.md, sample.txt, sample.html) + PDF generator
+  unit/ingestion/     # Unit tests for models, loader, storage
+  unit/retrieval/     # [planned]
+  integration/        # End-to-end pipeline tests
 data/
-  raw/                # Uploaded source documents
-  processed/          # Normalized plaintext + metadata
-  traces/             # JSON trace files (one per request)
-  eval/               # Golden Q&A dataset and flagged failure cases
-  chroma/             # ChromaDB file-based persistence
+  raw/                # Source documents (original, untouched)
+  processed/          # Normalised plaintext + metadata (one JSON per section/page)
+  traces/             # JSON trace files (one per request) [planned]
+  eval/               # Golden Q&A dataset and flagged failure cases [planned]
+  chroma/             # ChromaDB file-based persistence [planned]
+```
+
+### Ingestion Module
+
+The ingestion module (`src/ingestion/`) is the entry point for all content. It accepts `.md`, `.txt`, `.html`, and `.pdf` files, normalises them to clean plaintext, and attaches structured metadata.
+
+**`ProcessedDocument`** is the single output type for all formats:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `doc_id` | `str` | SHA-256 of raw file bytes — stable across re-ingestion |
+| `source_path` | `str` | Path to the original file |
+| `source_format` | `Literal[...]` | `"markdown"`, `"text"`, `"html"`, or `"pdf"` |
+| `title` | `str` | First heading found, or filename stem |
+| `section_heading` | `str \| None` | Nearest preceding heading; `None` for plain text and PDF |
+| `page_number` | `int \| None` | 1-indexed page number for PDF; `None` otherwise |
+| `text` | `str` | Clean plaintext — no markup |
+| `processed_at` | `str` | ISO-8601 UTC timestamp |
+
+**`DocumentLoader.load(path)`** dispatches by file extension:
+
+| Format | Splits on | `section_heading` | `page_number` |
+|--------|-----------|-------------------|---------------|
+| `.md` | `#` / `##` / `###` headings | Nearest preceding heading | `None` |
+| `.txt` | Whole file | `None` | `None` |
+| `.html` / `.htm` | `<h1>`–`<h6>` tags | Nearest preceding heading | `None` |
+| `.pdf` | Pages | `None` | 1-indexed |
+
+**Storage** mirrors the source path under `data/processed/`:
+
+```
+data/raw/guide.pdf          → data/processed/guide.pdf/page_001.json
+data/raw/setup.md           → data/processed/setup.md/section_000.json
+```
+
+Re-ingesting a file overwrites its output directory. Because `doc_id` derives from raw bytes, the ID is identical every time the same file is loaded — safe for downstream deduplication checks.
+
+**Public API:**
+
+```python
+from src.ingestion import DocumentLoader, save_processed, load_processed, list_raw_files
+
+loader = DocumentLoader(settings)
+docs = loader.load(Path("data/raw/guide.pdf"))
+save_processed(docs, source_raw_path, settings.processed_data_dir)
+
+# Re-index without re-upload:
+docs = load_processed(source_raw_path, settings.processed_data_dir)
 ```
 
 ### Pipeline Flow
