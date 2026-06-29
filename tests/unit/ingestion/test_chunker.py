@@ -166,12 +166,13 @@ class TestSemanticChunker:
         assert len(chunks) == 1
 
     def test_single_sentence_skips_api(self) -> None:
-        """Single-sentence docs skip embeddings API entirely."""
+        """Single-sentence docs skip client instantiation and embeddings API entirely."""
         chunker = Chunker(Settings(chunk_strategy="semantic", chunk_size=1000, chunk_overlap=0))
         doc = _make_doc(text="Only one sentence here.")
 
         with patch("openai.OpenAI") as MockClient:
             chunks = chunker.chunk([doc])
+            MockClient.assert_not_called()
             MockClient.return_value.embeddings.create.assert_not_called()
 
         assert len(chunks) == 1

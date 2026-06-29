@@ -50,7 +50,7 @@ class Chunker:
     def _semantic(self, docs: list[ProcessedDocument]) -> list[Chunk]:
         from openai import OpenAI
 
-        client = OpenAI(api_key=self._settings.openai_api_key)
+        client: OpenAI | None = None
         chunks: list[Chunk] = []
         now = _now_iso()
         chunk_idx = 0
@@ -64,6 +64,9 @@ class Chunker:
                 chunks.append(self._make_chunk(doc, doc.text.strip(), chunk_idx, "semantic", now))
                 chunk_idx += 1
                 continue
+
+            if client is None:
+                client = OpenAI(api_key=self._settings.openai_api_key)
 
             resp = client.embeddings.create(
                 model=self._settings.embedding_model,

@@ -195,3 +195,14 @@ class TestChunkingSettingsValidation:
         from src.config import Settings
         monkeypatch.setenv("CHUNK_STRATEGY", "semantic")
         assert Settings().chunk_strategy == "semantic"
+
+    def test_chunk_overlap_gte_chunk_size_rejected(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+        monkeypatch.setenv("CHUNK_SIZE", "100")
+        monkeypatch.setenv("CHUNK_OVERLAP", "100")
+        with pytest.raises(ValidationError):
+            Settings()
