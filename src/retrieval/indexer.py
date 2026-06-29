@@ -38,8 +38,9 @@ class Indexer:
                 self._vector_store.upsert, accepted_chunks, accepted_embeddings
             )
             bm25_future = executor.submit(self._bm25_store.add, accepted_chunks)
-            stored_ids = chroma_future.result()
-            bm25_future.result()
+
+        stored_ids = chroma_future.result()
+        bm25_future.result()
 
         self._bm25_store.save()
         return stored_ids
