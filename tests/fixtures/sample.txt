@@ -1,0 +1,7 @@
+This is a plain text document used for testing the document loader.
+
+It contains multiple paragraphs with no headings or structured markup.
+The loader should return the entire content as a single ProcessedDocument.
+
+Paragraph three provides additional context to ensure the loader handles
+multi-paragraph text files correctly.

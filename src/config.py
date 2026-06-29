@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     dense_weight: float = Field(default=0.7, ge=0.0, le=1.0)
     sparse_weight: float = Field(default=0.3, ge=0.0, le=1.0)
 
+    # Data directories
+    raw_data_dir: Path = Field(default=Path("./data/raw"))
+    processed_data_dir: Path = Field(default=Path("./data/processed"))
+
     # Deduplication
     dedup_threshold: float = Field(default=0.95, ge=0.0, le=1.0)
 
