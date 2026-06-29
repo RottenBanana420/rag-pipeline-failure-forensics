@@ -24,11 +24,9 @@ Production-grade RAG (Retrieval-Augmented Generation) system with built-in obser
 
 ## Commands
 
-Once the project is scaffolded, standard commands will be:
-
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (editable install with dev extras)
+pip install -e ".[dev]"
 
 # Run the API server
 uvicorn src.api.main:app --reload --port 8000
@@ -80,7 +78,7 @@ User Question → Embed → Dense Retrieval ─┐
 
 Every request is wrapped in a **Trace** (unique `trace_id`) containing **Spans** — one per pipeline step. Spans capture input, output, LLM prompt, token count, latency, and a confidence score (1–5). Completed traces are written to JSON and indexed in SQLite.
 
-### Module Layout (intended)
+### Module Layout
 
 ```
 src/
@@ -133,8 +131,15 @@ If retrieval confidence is below threshold, the system returns a structured "I d
 ```
 OPENAI_API_KEY=        # Required for embeddings and GPT-4o
 ANTHROPIC_API_KEY=     # Required if using Claude Sonnet as LLM
+EMBEDDING_MODEL=       # Embedding model name (default: text-embedding-3-small)
 CHROMA_PERSIST_DIR=    # Path for ChromaDB persistence (default: ./data/chroma)
 SQLITE_DB_PATH=        # Path for trace index (default: ./data/traces.db)
 TRACE_OUTPUT_DIR=      # Path for JSON trace files (default: ./data/traces/)
 LOG_LEVEL=             # DEBUG | INFO | WARNING (default: INFO)
+
+# Chunking
+CHUNK_STRATEGY=        # fixed_size | recursive_header | semantic (default: fixed_size)
+CHUNK_SIZE=            # Characters per chunk (default: 1000, min: 100)
+CHUNK_OVERLAP=         # Overlap between chunks (default: 200; must be < CHUNK_SIZE)
+SEMANTIC_BREAKPOINT_PERCENTILE=  # Distance percentile threshold for semantic splits (default: 95.0)
 ```

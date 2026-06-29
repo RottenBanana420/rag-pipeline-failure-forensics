@@ -34,7 +34,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | Component | Status |
 |-----------|--------|
 | Multi-format document loader (MD, TXT, HTML, PDF) | Done |
-| Configurable chunking strategies | Planned |
+| Configurable chunking strategies (fixed_size, recursive_header, semantic) | Done |
 | Embedding + ChromaDB storage | Planned |
 | BM25 index | Planned |
 | Deduplication | Planned |

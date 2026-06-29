@@ -1,5 +1,51 @@
 # Architecture Overview
 
+## 2026-06-28 — Phase 1: Chunking (Complete)
+
+### Chunking Module
+
+The chunker (`src/ingestion/chunker.py`) splits `ProcessedDocument` objects into `Chunk` objects using one of three switchable strategies. Strategy is set via `Settings.chunk_strategy`.
+
+**`Chunk`** — the output of chunking:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `chunk_id` | `str` | SHA-256 of `"{doc_id}:{text}"` — deterministic content address |
+| `doc_id` | `str` | Inherited from source `ProcessedDocument` |
+| `source_path` | `str` | Inherited |
+| `source_format` | `Literal[...]` | Inherited |
+| `title` | `str` | Inherited |
+| `section_heading` | `str \| None` | Inherited |
+| `page_number` | `int \| None` | Inherited |
+| `text` | `str` | Chunk text |
+| `chunk_index` | `int` | 0-based, continuous across all docs in one `chunk()` call |
+| `strategy` | `ChunkingStrategy` | `"fixed_size"`, `"recursive_header"`, or `"semantic"` |
+| `processed_at` | `str` | ISO-8601 UTC timestamp |
+
+**Strategies:**
+
+| Strategy | Splitter | Separators | Overlap |
+|----------|----------|------------|---------|
+| `fixed_size` | `RecursiveCharacterTextSplitter` | Default (`\n\n`, `\n`, ` `, `""`) | Yes |
+| `recursive_header` | `RecursiveCharacterTextSplitter` | `\n\n`, `\n`, `. `, `! `, `? `, ` `, `""` | Yes |
+| `semantic` | Custom (cosine distance on embeddings) | Sentence boundaries | No |
+
+The semantic strategy calls `openai.embeddings.create` for each multi-sentence document. The OpenAI client is lazily instantiated — single-sentence documents skip the API entirely.
+
+**Public API:**
+
+```python
+from src.ingestion import DocumentLoader, Chunker, Chunk, ChunkingStrategy, chunk_id
+
+loader = DocumentLoader(settings)
+docs = loader.load(Path("data/raw/guide.pdf"))
+
+chunker = Chunker(settings)          # strategy read from settings.chunk_strategy
+chunks: list[Chunk] = chunker.chunk(docs)
+```
+
+---
+
 ## 2026-06-28 — Phase 1: Document Loader (Complete)
 
 ### Module Layout
@@ -8,7 +54,8 @@
 src/
   config.py           # Central settings via pydantic-settings (singleton)
   ingestion/
-    models.py         # ProcessedDocument — universal output type for all loaders
+    models.py         # ProcessedDocument, Chunk, ChunkingStrategy, chunk_id
+    chunker.py        # Chunker — three switchable chunking strategies
     loader.py         # DocumentLoader — dispatches by file extension
     storage.py        # save_processed / load_processed / list_raw_files
   retrieval/          # Dense (ChromaDB), sparse (BM25), RRF fusion, reranker [planned]
@@ -72,7 +119,7 @@ Re-ingesting a file overwrites its output directory. Because `doc_id` derives fr
 **Public API:**
 
 ```python
-from src.ingestion import DocumentLoader, save_processed, load_processed, list_raw_files
+from src.ingestion import DocumentLoader, Chunker, save_processed, load_processed, list_raw_files
 
 loader = DocumentLoader(settings)
 docs = loader.load(Path("data/raw/guide.pdf"))
