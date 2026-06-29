@@ -82,3 +82,37 @@ class TestFixedSizeChunker:
         chunker = Chunker(Settings(chunk_strategy="fixed_size", chunk_size=100, chunk_overlap=20))
         chunks = chunker.chunk([_make_doc(doc_id="d1"), _make_doc(doc_id="d2")])
         assert [c.chunk_index for c in chunks] == list(range(len(chunks)))
+
+
+class TestRecursiveHeaderChunker:
+    def test_returns_chunks(self) -> None:
+        chunker = Chunker(Settings(chunk_strategy="recursive_header", chunk_size=100, chunk_overlap=20))
+        assert len(chunker.chunk([_make_doc()])) >= 1
+
+    def test_strategy_field_is_recursive_header(self) -> None:
+        chunker = Chunker(Settings(chunk_strategy="recursive_header", chunk_size=100, chunk_overlap=20))
+        assert all(c.strategy == "recursive_header" for c in chunker.chunk([_make_doc()]))
+
+    def test_metadata_preserved(self) -> None:
+        doc = _make_doc()
+        chunker = Chunker(Settings(chunk_strategy="recursive_header", chunk_size=100, chunk_overlap=20))
+        for c in chunker.chunk([doc]):
+            assert c.doc_id == doc.doc_id
+            assert c.section_heading == doc.section_heading
+
+    def test_keeps_paragraph_content(self) -> None:
+        text = "First paragraph content here.\n\nSecond paragraph content here.\n\nThird one."
+        chunker = Chunker(Settings(chunk_strategy="recursive_header", chunk_size=500, chunk_overlap=0))
+        combined = " ".join(c.text for c in chunker.chunk([_make_doc(text=text)]))
+        assert "First paragraph" in combined
+        assert "Second paragraph" in combined
+        assert "Third one" in combined
+
+    def test_chunk_indices_sequential(self) -> None:
+        chunker = Chunker(Settings(chunk_strategy="recursive_header", chunk_size=100, chunk_overlap=20))
+        chunks = chunker.chunk([_make_doc()])
+        assert [c.chunk_index for c in chunks] == list(range(len(chunks)))
+
+    def test_empty_doc_produces_no_chunks(self) -> None:
+        chunker = Chunker(Settings(chunk_strategy="recursive_header", chunk_size=100, chunk_overlap=0))
+        assert chunker.chunk([_make_doc(text="")]) == []
