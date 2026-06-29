@@ -67,7 +67,7 @@ class TestBM25StoreGetScores:
         from src.retrieval.bm25_store import BM25Store
 
         store = BM25Store(settings)
-        store.add([make_chunk(0, "hello world"), make_chunk(1, "foo bar")])
+        store.add([make_chunk(0, "hello world"), make_chunk(1, "foo bar"), make_chunk(2, "unrelated content here")])
         score_map = dict(store.get_scores("hello world"))
 
         assert score_map["chunk-000"] > score_map["chunk-001"]
@@ -83,13 +83,13 @@ class TestBM25StorePersistence:
         from src.retrieval.bm25_store import BM25Store
 
         store1 = BM25Store(settings)
-        store1.add([make_chunk(0, "hello world"), make_chunk(1, "foo bar")])
+        store1.add([make_chunk(0, "hello world"), make_chunk(1, "foo bar"), make_chunk(2, "unrelated content here")])
         store1.save()
 
         store2 = BM25Store(settings)
         store2.load()
 
-        assert store2.count() == 2
+        assert store2.count() == 3
         score_map = dict(store2.get_scores("hello world"))
         assert score_map["chunk-000"] > score_map["chunk-001"]
 
