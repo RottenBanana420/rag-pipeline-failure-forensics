@@ -9,6 +9,7 @@ unless you need isolated values in tests.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -44,6 +45,14 @@ class Settings(BaseSettings):
 
     # Deduplication
     dedup_threshold: float = Field(default=0.95, ge=0.0, le=1.0)
+
+    # Chunking
+    chunk_strategy: Literal["fixed_size", "recursive_header", "semantic"] = Field(
+        default="fixed_size"
+    )
+    chunk_size: int = Field(default=1000, ge=100)
+    chunk_overlap: int = Field(default=200, ge=0)
+    semantic_breakpoint_percentile: float = Field(default=95.0, ge=0.0, le=100.0)
 
     # Logging
     log_level: str = Field(default="INFO")

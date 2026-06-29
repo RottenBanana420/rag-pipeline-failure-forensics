@@ -128,3 +128,66 @@ class TestSettingsSingleton:
     def test_singleton_is_settings_instance(self):
         from src.config import Settings, settings
         assert isinstance(settings, Settings)
+
+
+class TestChunkingSettingsDefaults:
+    def test_chunk_strategy_default(self, clean_env: None) -> None:
+        from src.config import Settings
+        assert Settings().chunk_strategy == "fixed_size"
+
+    def test_chunk_size_default(self, clean_env: None) -> None:
+        from src.config import Settings
+        assert Settings().chunk_size == 1000
+
+    def test_chunk_overlap_default(self, clean_env: None) -> None:
+        from src.config import Settings
+        assert Settings().chunk_overlap == 200
+
+    def test_semantic_breakpoint_percentile_default(self, clean_env: None) -> None:
+        from src.config import Settings
+        assert Settings().semantic_breakpoint_percentile == 95.0
+
+
+class TestChunkingSettingsValidation:
+    def test_invalid_chunk_strategy_rejected(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+        from src.config import Settings
+        monkeypatch.setenv("CHUNK_STRATEGY", "sliding_window")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_chunk_size_below_minimum_rejected(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+        from src.config import Settings
+        monkeypatch.setenv("CHUNK_SIZE", "50")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_chunk_overlap_negative_rejected(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+        from src.config import Settings
+        monkeypatch.setenv("CHUNK_OVERLAP", "-1")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_semantic_percentile_above_100_rejected(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+        from src.config import Settings
+        monkeypatch.setenv("SEMANTIC_BREAKPOINT_PERCENTILE", "101.0")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_chunk_strategy_env_override(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+        monkeypatch.setenv("CHUNK_STRATEGY", "semantic")
+        assert Settings().chunk_strategy == "semantic"
