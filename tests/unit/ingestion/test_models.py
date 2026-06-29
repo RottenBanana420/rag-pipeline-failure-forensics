@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from src.ingestion.models import ProcessedDocument, Chunk, chunk_id
+from src.ingestion.models import Chunk, ProcessedDocument, chunk_id
 
 
 def _valid_kwargs(**overrides) -> dict:

@@ -153,6 +153,7 @@ class TestChunkingSettingsValidation:
         self, clean_env: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from pydantic import ValidationError
+
         from src.config import Settings
         monkeypatch.setenv("CHUNK_STRATEGY", "sliding_window")
         with pytest.raises(ValidationError):
@@ -162,6 +163,7 @@ class TestChunkingSettingsValidation:
         self, clean_env: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from pydantic import ValidationError
+
         from src.config import Settings
         monkeypatch.setenv("CHUNK_SIZE", "50")
         with pytest.raises(ValidationError):
@@ -171,6 +173,7 @@ class TestChunkingSettingsValidation:
         self, clean_env: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from pydantic import ValidationError
+
         from src.config import Settings
         monkeypatch.setenv("CHUNK_OVERLAP", "-1")
         with pytest.raises(ValidationError):
@@ -180,6 +183,7 @@ class TestChunkingSettingsValidation:
         self, clean_env: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from pydantic import ValidationError
+
         from src.config import Settings
         monkeypatch.setenv("SEMANTIC_BREAKPOINT_PERCENTILE", "101.0")
         with pytest.raises(ValidationError):
