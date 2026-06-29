@@ -35,9 +35,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 |-----------|--------|
 | Multi-format document loader (MD, TXT, HTML, PDF) | Done |
 | Configurable chunking strategies (fixed_size, recursive_header, semantic) | Done |
-| Embedding + ChromaDB storage | Planned |
-| BM25 index | Planned |
-| Deduplication | Planned |
+| Embedding + ChromaDB storage | Done |
+| BM25 index | Done |
+| Deduplication (cosine similarity, threshold 0.95) | Done |
 | Dense retrieval | Planned |
 | Sparse retrieval | Planned |
 | RRF fusion + reranker | Planned |

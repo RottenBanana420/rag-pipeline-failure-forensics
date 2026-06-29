@@ -1,5 +1,55 @@
 # Architecture Overview
 
+## 2026-06-29 — Phase 1: Retrieval Indexing (Complete)
+
+### Retrieval Module
+
+The retrieval module (`src/retrieval/`) handles embedding, vector storage, BM25 indexing, and orchestrated ingestion into both indexes.
+
+**Public API:**
+
+```python
+from src.retrieval import Embedder, VectorStore, BM25Store, Indexer
+from src.config import Settings
+
+settings = Settings()
+indexer = Indexer(settings)          # loads existing BM25 index from disk on init
+
+# Full pipeline: embed → dedup → parallel upsert → save BM25
+stored_ids = indexer.index(chunks)   # chunks: list[Chunk] from src.ingestion
+```
+
+**Classes:**
+
+| Class | File | Responsibility |
+|-------|------|----------------|
+| `Embedder` | `embedder.py` | Batch OpenAI embeddings (`BATCH_SIZE = 200`) |
+| `VectorStore` | `vector_store.py` | ChromaDB persistent client, cosine-space collection `"rag_chunks"`, upsert + dedup |
+| `BM25Store` | `bm25_store.py` | BM25Okapi index, cumulative add, pickle persistence, scored retrieval |
+| `Indexer` | `indexer.py` | Orchestrator: embed → dedup → parallel upsert (ThreadPoolExecutor) → save BM25 |
+
+**Deduplication:** `VectorStore.filter_duplicates` queries ChromaDB for the nearest neighbour of each incoming embedding. Chunks where `(1 - cosine_distance) >= settings.dedup_threshold` (default 0.95) are excluded from both stores. Fast-paths to accept all when the collection is empty.
+
+**Sync guarantee:** `Indexer.index` applies deduplication before touching either store, so ChromaDB and BM25 always receive the same accepted set. The `ThreadPoolExecutor` `with` block is exited (which calls `shutdown(wait=True)`) before either `.result()` is collected — ensuring both threads complete before any exception propagates or `bm25_store.save()` is called.
+
+**BM25 persistence:** `BM25Store` pickles `{"chunk_ids": list[str], "corpus": list[list[str]]}` to `data/bm25_index.pkl` (sibling of `data/chroma/`). On load it reconstructs `BM25Okapi` from the corpus. The `BM25Okapi` object itself is not pickled to avoid library-version compatibility issues.
+
+**ChromaDB metadata** stored per chunk:
+
+| Field | Type | Source |
+|-------|------|--------|
+| `source_path` | `str` | `chunk.source_path` |
+| `chunk_index` | `int` | `chunk.chunk_index` |
+| `section_heading` | `str` | `chunk.section_heading or ""` |
+| `strategy` | `str` | `chunk.strategy` |
+| `char_count` | `int` | `len(chunk.text)` |
+| `doc_id` | `str` | `chunk.doc_id` |
+| `title` | `str` | `chunk.title` |
+
+**Known limitation:** `filter_duplicates` issues one ChromaDB query per candidate chunk — O(n) at ingestion time. Acceptable for current volumes; will need batching for bulk re-indexing.
+
+---
+
 ## 2026-06-28 — Phase 1: Chunking (Complete)
 
 ### Chunking Module
@@ -58,7 +108,8 @@ src/
     chunker.py        # Chunker — three switchable chunking strategies
     loader.py         # DocumentLoader — dispatches by file extension
     storage.py        # save_processed / load_processed / list_raw_files
-  retrieval/          # Dense (ChromaDB), sparse (BM25), RRF fusion, reranker [planned]
+  retrieval/          # Embedder, VectorStore, BM25Store, Indexer (complete)
+                      # RRF fusion, reranker [planned]
   generation/         # Grounded prompt, citation parser/verifier, confidence scorer [planned]
   tracing/            # Trace/Span models, context manager, decorator, JSON+SQLite writers [planned]
   analysis/           # Backward trace walker, failure categorizer, evidence chain builder [planned]
@@ -71,14 +122,15 @@ scripts/
 tests/
   fixtures/           # Sample files (sample.md, sample.txt, sample.html) + PDF generator
   unit/ingestion/     # Unit tests for models, loader, storage
-  unit/retrieval/     # [planned]
+  unit/retrieval/     # Unit tests for Embedder, VectorStore, BM25Store, Indexer
   integration/        # End-to-end pipeline tests
 data/
   raw/                # Source documents (original, untouched)
   processed/          # Normalised plaintext + metadata (one JSON per section/page)
+  chroma/             # ChromaDB file-based persistence
+  bm25_index.pkl      # BM25 index (pickled corpus + chunk_ids, rebuilt on load)
   traces/             # JSON trace files (one per request) [planned]
   eval/               # Golden Q&A dataset and flagged failure cases [planned]
-  chroma/             # ChromaDB file-based persistence [planned]
 ```
 
 ### Ingestion Module

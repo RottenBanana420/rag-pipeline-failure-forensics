@@ -83,7 +83,8 @@ Every request is wrapped in a **Trace** (unique `trace_id`) containing **Spans**
 ```
 src/
   ingestion/          # Document loaders, chunking strategies, deduplication
-  retrieval/          # Dense (ChromaDB), sparse (BM25), RRF fusion, reranker
+  retrieval/          # Embedder, VectorStore (ChromaDB + cosine dedup), BM25Store, Indexer
+                      # RRF fusion and reranker planned
   generation/         # Grounded prompt, citation parser, citation verifier, confidence scorer
   tracing/            # Trace/Span models, context manager, decorator, JSON + SQLite writers
   analysis/           # Backward trace walker, failure categorizer, evidence chain builder
