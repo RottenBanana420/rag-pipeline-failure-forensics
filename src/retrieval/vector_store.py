@@ -102,7 +102,7 @@ class VectorStore:
                     source_path=meta["source_path"],
                     title=meta["title"],
                     section_heading=meta["section_heading"] or None,
-                    chunk_index=int(meta["chunk_index"]),  # type: ignore[arg-type]
+                    chunk_index=int(meta["chunk_index"]),  # pyright: ignore[reportArgumentType]
                     strategy=meta["strategy"],
                     similarity=1.0 - dist,
                 )
