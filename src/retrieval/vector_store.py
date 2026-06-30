@@ -17,7 +17,7 @@ class VectorStore:
         client = chromadb.PersistentClient(path=settings.chroma_persist_dir_str)
         self._collection = client.get_or_create_collection(
             COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine"},
+            configuration={"hnsw": {"space": "cosine"}},
         )
 
     def filter_duplicates(
