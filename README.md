@@ -38,6 +38,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | Embedding + ChromaDB storage | Done |
 | BM25 index | Done |
 | Deduplication (cosine similarity, threshold 0.95) | Done |
-| Dense retrieval | Planned |
-| Sparse retrieval | Planned |
-| RRF fusion + reranker | Planned |
+| Dense retrieval (cosine top-k via ChromaDB) | Done |
+| Sparse retrieval (BM25, score-normalized) | Done |
+| RRF fusion (weighted, k=60) + HybridRetriever | Done |
+| Cross-encoder reranker (cuts to top 5) | Planned |

@@ -95,7 +95,8 @@ src/
   retrieval/          # Embedder, VectorStore (ChromaDB + cosine dedup), BM25Store, Indexer
                       # DenseRetriever (cosine top-k), SparseRetriever (BM25 + score norm)
                       # VectorStoreHit (shared query result model)
-                      # RRF fusion and reranker planned
+                      # reciprocal_rank_fusion (RRF, k=60, weighted), HybridRetriever
+                      # Reranker: planned (cross-encoder, cuts RRF output to top 5)
   generation/         # Grounded prompt, citation parser, citation verifier, confidence scorer
   tracing/            # Trace/Span models, context manager, decorator, JSON + SQLite writers
   analysis/           # Backward trace walker, failure categorizer, evidence chain builder
@@ -110,6 +111,7 @@ tests/
   unit/ingestion/     # test_models, test_loader, test_storage, test_chunker
   unit/retrieval/     # test_embedder, test_vector_store, test_bm25_store, test_indexer
                       # test_dense_retriever, test_sparse_retriever
+                      # test_fusion, test_hybrid_retriever
   integration/        # End-to-end pipeline tests against real ChromaDB
 data/
   raw/                # Uploaded source documents

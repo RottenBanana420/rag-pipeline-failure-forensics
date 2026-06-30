@@ -1,5 +1,46 @@
 # Architecture Overview
 
+## 2026-06-30 — Phase 1: RRF Fusion + HybridRetriever (Complete)
+
+### Fusion Layer
+
+**`reciprocal_rank_fusion`** (`fusion.py`):
+
+- Combines `dense_hits` and `sparse_hits` into a single ranked list
+- Score per chunk: `sum_r: weight_r / (k + rank_r)` where `k = 60` (Cormack et al. 2009)
+- Default weights: `dense_weight=0.7`, `sparse_weight=0.3` (configurable via `Settings`)
+- When a chunk appears in both lists, scores accumulate — overlap boosts rank
+- Dense hit metadata takes priority when a chunk appears in both lists (`hits_by_id[id] = hit` for dense, `setdefault` for sparse)
+- Output: `list[VectorStoreHit]` with `similarity` set to RRF score (not original cosine/BM25 score)
+- `top_n` limits final output (default: `settings.rerank_top_n = 5`)
+
+**`HybridRetriever`** (`hybrid_retriever.py`):
+
+- Wires `DenseRetriever` + `SparseRetriever` + `reciprocal_rank_fusion` via `Settings`
+- `.retrieve(query)` → calls both retrievers with configured `k` → fuses → returns top-N
+
+**Public API:**
+
+```python
+from src.retrieval import HybridRetriever, DenseRetriever, SparseRetriever
+from src.retrieval import Embedder, VectorStore, BM25Store
+from src.config import Settings
+
+settings = Settings()
+dense = DenseRetriever(Embedder(settings), VectorStore(settings))
+sparse = SparseRetriever(BM25Store(settings), VectorStore(settings))
+
+retriever = HybridRetriever(dense, sparse, settings)
+hits = retriever.retrieve("how do I configure chunking?")  # list[VectorStoreHit], len ≤ rerank_top_n
+```
+
+**Design notes:**
+- `reciprocal_rank_fusion` is a pure function with no dependencies on retriever internals — independently testable (11 unit tests, no mocks)
+- `HybridRetriever` contains no scoring logic; tests mock both retrievers and verify wiring only (8 tests)
+- RRF scores replace `similarity` via `dataclasses.replace` — frozen `VectorStoreHit` instances are never mutated
+
+---
+
 ## 2026-06-30 — Phase 1: Hybrid Retrieval — Dense & Sparse Retrievers (Complete)
 
 ### Retrieval Query Path
@@ -165,7 +206,8 @@ src/
     storage.py        # save_processed / load_processed / list_raw_files
   retrieval/          # Embedder, VectorStore, BM25Store, Indexer (complete)
                       # DenseRetriever, SparseRetriever, VectorStoreHit (complete)
-                      # RRF fusion, reranker [planned]
+                      # reciprocal_rank_fusion, HybridRetriever (complete)
+                      # reranker [planned]
   generation/         # Grounded prompt, citation parser/verifier, confidence scorer [planned]
   tracing/            # Trace/Span models, context manager, decorator, JSON+SQLite writers [planned]
   analysis/           # Backward trace walker, failure categorizer, evidence chain builder [planned]

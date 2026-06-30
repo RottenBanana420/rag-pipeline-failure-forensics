@@ -70,6 +70,20 @@
 
 ---
 
+## 2026-06-30 — RRF Fusion Layer
+
+**RRF constant `k = 60` (Cormack et al. 2009)** — Standard value from the original RRF paper, used universally in production IR systems. Higher k flattens rank differences (top vs. bottom matter less); lower k exaggerates them. 60 is the empirically validated sweet spot for combining ranked lists in document retrieval.
+
+**Weighted RRF, not simple RRF** — `score = weight / (k + rank)` per list, not `1 / (k + rank)`. Allows tuning the dense/sparse balance without changing retrieval k values. Default 0.7/0.3 reflects that dense retrieval generally outperforms BM25 on semantic questions while sparse still adds value for exact keyword matches (function names, config keys, error codes).
+
+**Dense hit metadata priority on overlap** — When a chunk appears in both dense and sparse results, the dense hit's metadata is used. Dense retrieval fetches metadata from ChromaDB directly; sparse hydrates via a second ChromaDB lookup. Using dense metadata avoids a redundant round-trip on overlapping chunks and prefers the richer semantic retrieval path.
+
+**`dataclasses.replace()` to set RRF score on frozen hits** — `VectorStoreHit` is a frozen dataclass. The fusion layer must update `similarity` to the RRF score without mutating the original hit. `dataclasses.replace(hit, similarity=rrf_score)` creates a new instance with all other fields copied — the idiomatic pattern for updating frozen dataclasses. Consistent with how `SparseRetriever` swaps in normalized BM25 scores.
+
+**`HybridRetriever` as thin wiring layer, not algorithm** — `HybridRetriever` contains no retrieval or scoring logic; it reads `Settings`, calls both retrievers, and passes results to `reciprocal_rank_fusion`. Keeps the RRF algorithm independently testable as a pure function (11 unit tests, no mock retrievers) and makes `HybridRetriever` tests focus on wiring only (8 tests, both retrievers mocked).
+
+---
+
 ## 2026-06-30 — Hybrid Retrieval Query Path
 
 **`DenseRetriever` wraps `Embedder` + `VectorStore.query`** — The retriever is a thin stateless facade: embed query → query collection. Keeping embedding and querying separate (rather than adding a `query_text` method to `VectorStore`) means tests can swap `Embedder` for a fixture without touching `VectorStore`, and the same `Embedder` instance is shared across the indexing and query paths with no duplication.
