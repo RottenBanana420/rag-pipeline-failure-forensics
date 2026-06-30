@@ -95,3 +95,32 @@ class TestIndexerIndex:
 
         assert len(scores) == 1
         assert scores[0][0] == "chunk-000"
+
+    def test_index_logs_dedup_stats(self, settings, make_chunk, caplog):
+        import logging
+
+        from src.retrieval.bm25_store import BM25Store
+        from src.retrieval.embedder import Embedder
+        from src.retrieval.indexer import Indexer
+        from src.retrieval.vector_store import VectorStore
+
+        chunk_a = make_chunk(0)
+        chunk_dup = make_chunk(1)
+
+        embedder = MagicMock(spec=Embedder)
+        embedder.embed.return_value = [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
+
+        vs = MagicMock(spec=VectorStore)
+        vs.filter_duplicates.return_value = ([chunk_a], [[1.0, 0.0, 0.0]])  # chunk_dup filtered
+        vs.upsert.return_value = [chunk_a.chunk_id]
+
+        bm25 = MagicMock(spec=BM25Store)
+
+        indexer = Indexer(settings, embedder=embedder, vector_store=vs, bm25_store=bm25)
+
+        with caplog.at_level(logging.INFO, logger="src.retrieval.indexer"):
+            stored = indexer.index([chunk_a, chunk_dup])
+
+        assert stored == [chunk_a.chunk_id]
+        assert any("duplicate" in r.message.lower() or "skipped" in r.message.lower()
+                   for r in caplog.records)

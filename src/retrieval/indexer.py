@@ -1,3 +1,4 @@
+import logging
 from concurrent.futures import ThreadPoolExecutor
 
 from src.config import Settings
@@ -5,6 +6,8 @@ from src.ingestion import Chunk
 from src.retrieval.bm25_store import BM25Store
 from src.retrieval.embedder import Embedder
 from src.retrieval.vector_store import VectorStore
+
+logger = logging.getLogger(__name__)
 
 
 class Indexer:
@@ -29,6 +32,15 @@ class Indexer:
         accepted_chunks, accepted_embeddings = self._vector_store.filter_duplicates(
             chunks, embeddings
         )
+
+        skipped = len(chunks) - len(accepted_chunks)
+        if skipped:
+            logger.info(
+                "Indexer: %d/%d chunks accepted, %d duplicate(s) skipped",
+                len(accepted_chunks),
+                len(chunks),
+                skipped,
+            )
 
         if not accepted_chunks:
             return []
