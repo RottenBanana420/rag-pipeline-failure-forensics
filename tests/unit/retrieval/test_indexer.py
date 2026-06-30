@@ -1,37 +1,8 @@
 from unittest.mock import MagicMock
 
-import pytest
-
-from src.ingestion import Chunk
-
-
-def make_chunk(idx: int, text: str = "sample text") -> Chunk:
-    return Chunk(
-        chunk_id=f"chunk-{idx:03d}",
-        doc_id=f"doc-{idx:03d}",
-        source_path=f"/data/doc-{idx:03d}.md",
-        source_format="markdown",
-        title=f"Doc {idx}",
-        section_heading=None,
-        page_number=None,
-        text=text,
-        chunk_index=idx,
-        strategy="fixed_size",
-        processed_at="2024-01-01T00:00:00Z",
-    )
-
-
-@pytest.fixture
-def settings(monkeypatch, tmp_path):
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
-    monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
-    from src.config import Settings
-    return Settings()
-
 
 class TestIndexerIndex:
-    def test_index_returns_stored_chunk_ids(self, settings):
+    def test_index_returns_stored_chunk_ids(self, settings, make_chunk):
         from src.retrieval.bm25_store import BM25Store
         from src.retrieval.embedder import Embedder
         from src.retrieval.indexer import Indexer
@@ -50,7 +21,7 @@ class TestIndexerIndex:
 
         assert stored == ["chunk-000", "chunk-001", "chunk-002"]
 
-    def test_index_stores_in_both_indexes(self, settings):
+    def test_index_stores_in_both_indexes(self, settings, make_chunk):
         from src.retrieval.bm25_store import BM25Store
         from src.retrieval.embedder import Embedder
         from src.retrieval.indexer import Indexer
@@ -69,7 +40,7 @@ class TestIndexerIndex:
         assert vector_store.count() == 2
         assert bm25_store.count() == 2
 
-    def test_index_excludes_duplicates_from_both_stores(self, settings):
+    def test_index_excludes_duplicates_from_both_stores(self, settings, make_chunk):
         from src.retrieval.bm25_store import BM25Store
         from src.retrieval.embedder import Embedder
         from src.retrieval.indexer import Indexer
@@ -90,11 +61,19 @@ class TestIndexerIndex:
         assert bm25_store.count() == 1
 
     def test_index_empty_list_returns_empty(self, settings):
+        from src.retrieval.bm25_store import BM25Store
+        from src.retrieval.embedder import Embedder
         from src.retrieval.indexer import Indexer
+        from src.retrieval.vector_store import VectorStore
 
-        assert Indexer(settings).index([]) == []
+        assert Indexer(
+            settings,
+            embedder=MagicMock(spec=Embedder),
+            vector_store=MagicMock(spec=VectorStore),
+            bm25_store=MagicMock(spec=BM25Store),
+        ).index([]) == []
 
-    def test_index_persists_bm25_to_disk(self, settings):
+    def test_index_persists_bm25_to_disk(self, settings, make_chunk):
         from src.retrieval.bm25_store import BM25Store
         from src.retrieval.embedder import Embedder
         from src.retrieval.indexer import Indexer

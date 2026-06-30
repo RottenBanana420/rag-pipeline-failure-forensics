@@ -1,16 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from src.config import Settings
-
-
-@pytest.fixture
-def settings(monkeypatch):
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
-    return Settings()
-
 
 def _mock_response(n: int) -> MagicMock:
     resp = MagicMock()

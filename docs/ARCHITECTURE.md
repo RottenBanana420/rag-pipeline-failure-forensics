@@ -46,8 +46,6 @@ stored_ids = indexer.index(chunks)   # chunks: list[Chunk] from src.ingestion
 | `doc_id` | `str` | `chunk.doc_id` |
 | `title` | `str` | `chunk.title` |
 
-**Known limitation:** `filter_duplicates` issues one ChromaDB query per candidate chunk — O(n) at ingestion time. Acceptable for current volumes; will need batching for bulk re-indexing.
-
 ---
 
 ## 2026-06-28 — Phase 1: Chunking (Complete)

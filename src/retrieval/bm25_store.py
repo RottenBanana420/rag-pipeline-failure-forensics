@@ -33,6 +33,7 @@ class BM25Store:
     def load(self) -> None:
         if not self._index_path.exists():
             return
+        # Path is application-controlled (derived from CHROMA_PERSIST_DIR), not user-supplied.
         with open(self._index_path, "rb") as fh:
             data = pickle.load(fh)
         self._chunk_ids = data["chunk_ids"]

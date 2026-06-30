@@ -54,7 +54,7 @@
 
 **`COLLECTION_NAME = "rag_chunks"` as an exported constant** — Other modules (tests, future retrieval query path) need to open the same collection by name. Exporting it from `vector_store.py` gives a single source of truth rather than a magic string repeated across files.
 
-**Deduplication via per-chunk nearest-neighbour query** — Each candidate embedding is queried with `n_results=1` to find its closest existing neighbour. This is O(n) queries but keeps the implementation simple and correct. ChromaDB's HNSW index makes each query fast in practice. A batched alternative (e.g., comparing all candidates in one query) would require post-processing to map results back to candidates; deferred until bulk re-indexing becomes a bottleneck.
+**Deduplication via batched nearest-neighbour query** — All candidate embeddings are passed to `collection.query()` in a single call (`n_results=1`); ChromaDB returns one result set per query embedding. `results["distances"][i][0]` gives the cosine distance from candidate i to its closest stored neighbour. A chunk is a duplicate when `(1 - distance) >= threshold`. This is O(1) round-trips regardless of batch size and is idiomatic to ChromaDB's multi-query API.
 
 **`BM25Okapi` corpus uses `text.lower().split()` tokenization** — Consistent tokenization between index and query is more important than sophisticated tokenization for this domain. Lowercasing normalizes case variations; whitespace splitting is deterministic and dependency-free. The same `_tokenize` function is used for both `add` and `get_scores`, guaranteeing consistency.
 
