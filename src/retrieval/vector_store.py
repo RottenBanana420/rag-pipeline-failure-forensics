@@ -31,7 +31,7 @@ class VectorStore:
             n_results=1,
             include=["distances"],
         )
-        all_distances: list[list[float]] = results["distances"]  # type: ignore[index]
+        all_distances: list[list[float]] = results["distances"]  # type: ignore[assignment]
         accepted_chunks: list[Chunk] = []
         accepted_embeddings: list[list[float]] = []
         for chunk, embedding, distances in zip(chunks, embeddings, all_distances, strict=True):
