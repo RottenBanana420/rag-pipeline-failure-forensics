@@ -22,9 +22,18 @@ Production-grade RAG (Retrieval-Augmented Generation) system with built-in obser
 | Frontend | Streamlit or React |
 | Containerization | Docker Compose |
 
+## Error Resolution & Library Lookups
+
+**Always use Context7 (or a web search) before implementing anything that touches a library or framework.** Do not rely on training knowledge — library APIs change, defaults shift, and version-specific bugs exist. Look up current docs first, then implement. This applies to new features, error debugging, API usage, and version migration. **Add a "Look up docs via Context7" step to every implementation plan before writing code.**
+
+When encountering an error: look up the error message and library in Context7 or via web search before drawing any conclusions. Avoid assumptions about root cause.
+
 ## Commands
 
 ```bash
+# Copy and fill in environment variables before running anything
+cp .env.example .env
+
 # Install dependencies (editable install with dev extras)
 pip install -e ".[dev]"
 
@@ -84,6 +93,8 @@ Every request is wrapped in a **Trace** (unique `trace_id`) containing **Spans**
 src/
   ingestion/          # Document loaders, chunking strategies, deduplication
   retrieval/          # Embedder, VectorStore (ChromaDB + cosine dedup), BM25Store, Indexer
+                      # DenseRetriever (cosine top-k), SparseRetriever (BM25 + score norm)
+                      # VectorStoreHit (shared query result model)
                       # RRF fusion and reranker planned
   generation/         # Grounded prompt, citation parser, citation verifier, confidence scorer
   tracing/            # Trace/Span models, context manager, decorator, JSON + SQLite writers
@@ -95,7 +106,10 @@ scripts/
   seed_corpus.py      # Index sample docs for local testing
   run_eval.py         # Execute full eval suite and print metrics
 tests/
-  unit/               # Per-module unit tests
+  fixtures/           # Sample files (sample.md, sample.txt, sample.html) + PDF generator
+  unit/ingestion/     # test_models, test_loader, test_storage, test_chunker
+  unit/retrieval/     # test_embedder, test_vector_store, test_bm25_store, test_indexer
+                      # test_dense_retriever, test_sparse_retriever
   integration/        # End-to-end pipeline tests against real ChromaDB
 data/
   raw/                # Uploaded source documents

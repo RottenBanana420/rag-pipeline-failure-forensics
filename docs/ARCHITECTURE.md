@@ -1,5 +1,62 @@
 # Architecture Overview
 
+## 2026-06-30 — Phase 1: Hybrid Retrieval — Dense & Sparse Retrievers (Complete)
+
+### Retrieval Query Path
+
+Two retriever classes implement the query side of hybrid retrieval. Both return `list[VectorStoreHit]`.
+
+**`VectorStoreHit`** — shared result model for all retrieval paths:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `chunk_id` | `str` | Content-addressed chunk ID |
+| `text` | `str` | Chunk text |
+| `doc_id` | `str` | Source document ID |
+| `source_path` | `str` | Path to original file |
+| `title` | `str` | Document title |
+| `section_heading` | `str \| None` | Nearest section heading |
+| `chunk_index` | `int` | 0-based position within document |
+| `strategy` | `str` | Chunking strategy used |
+| `similarity` | `float` | Relevance score in [0, 1] |
+
+**`DenseRetriever`** (`dense_retriever.py`):
+- Embeds the query via `Embedder.embed([query])` (single-item list, unpacked)
+- Calls `VectorStore.query(embedding, k)` → ranked by cosine similarity
+- Default `k=10`
+
+**`SparseRetriever`** (`sparse_retriever.py`):
+- Scores all indexed chunks via `BM25Store.get_scores(query)`
+- Sorts by BM25 score descending, takes top-k, discards zero-score chunks
+- Normalizes scores by dividing by max score → `similarity` in (0, 1]
+- Fetches full chunk metadata from `VectorStore.get_by_ids(ids)` (single round-trip)
+- Replaces `similarity` field with the normalized BM25 score via `dataclasses.replace`
+
+**Public API:**
+
+```python
+from src.retrieval import DenseRetriever, SparseRetriever, Embedder, VectorStore, BM25Store
+from src.config import Settings
+
+settings = Settings()
+embedder = Embedder(settings)
+vector_store = VectorStore(settings)
+bm25_store = BM25Store(settings)
+
+dense = DenseRetriever(embedder, vector_store)
+sparse = SparseRetriever(bm25_store, vector_store)
+
+dense_hits = dense.retrieve("how do I configure chunking?", k=10)
+sparse_hits = sparse.retrieve("how do I configure chunking?", k=10)
+```
+
+**Design notes:**
+- `SparseRetriever` depends on `VectorStore` to fetch metadata (text, source_path, title, etc.) — BM25 only stores chunk IDs and corpus tokens, not full metadata. This keeps BM25 persistence lightweight and avoids duplicating metadata.
+- Score normalization (`/ max_score`) makes BM25 scores comparable to cosine similarity scores, which is required for RRF fusion in the next step.
+- If BM25 has no scores or all scores are 0.0, `SparseRetriever` returns `[]` without touching ChromaDB.
+
+---
+
 ## 2026-06-29 — Phase 1: Retrieval Indexing (Complete)
 
 ### Retrieval Module
@@ -107,6 +164,7 @@ src/
     loader.py         # DocumentLoader — dispatches by file extension
     storage.py        # save_processed / load_processed / list_raw_files
   retrieval/          # Embedder, VectorStore, BM25Store, Indexer (complete)
+                      # DenseRetriever, SparseRetriever, VectorStoreHit (complete)
                       # RRF fusion, reranker [planned]
   generation/         # Grounded prompt, citation parser/verifier, confidence scorer [planned]
   tracing/            # Trace/Span models, context manager, decorator, JSON+SQLite writers [planned]

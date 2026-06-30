@@ -67,3 +67,17 @@
 **`BM25Okapi` requires ≥ 3 documents for discriminative IDF** — With exactly 2 documents, `IDF(term) = log((2 - 1 + 0.5) / (1 + 0.5)) = log(1) = 0` for any term appearing in exactly one document, making all scores 0.0. Tests that assert ranking behaviour use ≥ 3 documents to ensure non-zero IDF values. This is a property of the BM25 formula, not a library bug.
 
 **Optional constructor args for `Indexer` (`embedder`, `vector_store`, `bm25_store`)** — The orchestrator creates its dependencies internally by default, but accepts pre-built instances via keyword-only args. This enables unit tests to inject a mock `Embedder` alongside real `VectorStore` and `BM25Store` instances backed by `tmp_path`, testing sync and dedup behaviour without calling the OpenAI API. The pattern is consistent with how `Chunker` tests mock `openai.OpenAI`.
+
+---
+
+## 2026-06-30 — Hybrid Retrieval Query Path
+
+**`DenseRetriever` wraps `Embedder` + `VectorStore.query`** — The retriever is a thin stateless facade: embed query → query collection. Keeping embedding and querying separate (rather than adding a `query_text` method to `VectorStore`) means tests can swap `Embedder` for a fixture without touching `VectorStore`, and the same `Embedder` instance is shared across the indexing and query paths with no duplication.
+
+**`SparseRetriever` fetches metadata from `VectorStore`, not `BM25Store`** — BM25 stores only `chunk_ids` and `corpus` (raw tokens) for index construction. Duplicating full chunk metadata (text, title, source_path, etc.) into the BM25 pickle would double storage and create a sync hazard. Instead, `SparseRetriever` calls `VectorStore.get_by_ids(ids)` to hydrate results — one ChromaDB round-trip per query regardless of `k`.
+
+**BM25 scores normalized by max score before returning** — Raw BM25 scores are unbounded and dataset-dependent. Dividing by `max_score` maps results to (0, 1], making the `similarity` field semantically comparable to cosine similarity. This is required for RRF fusion (next step) and for displaying consistent confidence scores across retrieval modes.
+
+**Zero-score guard in `SparseRetriever`** — After sorting, chunks with `score == 0.0` are dropped before normalization. A zero-score chunk means BM25 found no query term overlap — including it would produce `0 / max_score = 0` similarity entries that pollute fusion results. The guard also prevents division-by-zero when all scores are zero (empty index or no term overlap).
+
+**`VectorStoreHit` as the shared result model** — Both `DenseRetriever` and `SparseRetriever` return `list[VectorStoreHit]`. Using a single frozen dataclass means the RRF fusion layer and reranker don't need to know which retriever produced a hit. `dataclasses.replace` in `SparseRetriever` swaps in the normalized BM25 score without mutating the ChromaDB-returned hit.
