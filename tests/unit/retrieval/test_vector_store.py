@@ -97,3 +97,71 @@ class TestVectorStoreFilterDuplicates:
 
         assert accepted == []
         assert any("duplicate" in r.message.lower() for r in caplog.records)
+
+
+class TestVectorStoreQuery:
+    def test_query_returns_hits_sorted_by_similarity(self, settings, make_chunk):
+        from src.retrieval.vector_store import VectorStore
+
+        vs = VectorStore(settings)
+        chunks = [make_chunk(0, text="alpha"), make_chunk(1, text="beta"), make_chunk(2, text="gamma")]
+        vs.upsert(chunks, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+
+        hits = vs.query([1.0, 0.0, 0.0], k=3)
+
+        assert len(hits) == 3
+        assert hits[0].chunk_id == "chunk-000"
+        assert hits[0].similarity > hits[1].similarity >= hits[2].similarity
+
+    def test_query_empty_collection_returns_empty(self, settings):
+        from src.retrieval.vector_store import VectorStore
+
+        hits = VectorStore(settings).query([1.0, 0.0, 0.0], k=10)
+        assert hits == []
+
+    def test_query_k_exceeds_count_returns_all(self, settings, make_chunk):
+        from src.retrieval.vector_store import VectorStore
+
+        vs = VectorStore(settings)
+        vs.upsert([make_chunk(0)], [[1.0, 0.0, 0.0]])
+
+        hits = vs.query([1.0, 0.0, 0.0], k=10)
+
+        assert len(hits) == 1
+
+    def test_query_limits_results_to_k(self, settings, make_chunk):
+        from src.retrieval.vector_store import VectorStore
+
+        vs = VectorStore(settings)
+        chunks = [make_chunk(i) for i in range(5)]
+        embeddings = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.7, 0.7, 0.0],
+            [0.0, 0.7, 0.7],
+        ]
+        vs.upsert(chunks, embeddings)
+
+        hits = vs.query([1.0, 0.0, 0.0], k=3)
+
+        assert len(hits) == 3
+
+    def test_query_hit_fields_populated(self, settings, make_chunk):
+        from src.retrieval.vector_store import VectorStore
+
+        vs = VectorStore(settings)
+        chunk = make_chunk(0, text="hello world")
+        vs.upsert([chunk], [[1.0, 0.0, 0.0]])
+
+        hit = vs.query([1.0, 0.0, 0.0], k=1)[0]
+
+        assert hit.chunk_id == "chunk-000"
+        assert hit.text == "hello world"
+        assert hit.doc_id == "doc-000"
+        assert hit.source_path == "/data/doc-000.md"
+        assert hit.title == "Doc 0"
+        assert hit.section_heading is None  # stored as "" → converted back to None
+        assert hit.chunk_index == 0
+        assert hit.strategy == "fixed_size"
+        assert 0.0 <= hit.similarity <= 1.0

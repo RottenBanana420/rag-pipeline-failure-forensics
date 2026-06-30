@@ -4,6 +4,7 @@ import chromadb
 
 from src.config import Settings
 from src.ingestion import Chunk
+from src.retrieval.models import VectorStoreHit
 
 COLLECTION_NAME = "rag_chunks"
 
@@ -77,6 +78,36 @@ class VectorStore:
             ],
         )
         return [c.chunk_id for c in chunks]
+
+    def query(self, embedding: list[float], k: int = 10) -> list[VectorStoreHit]:
+        if self._collection.count() == 0:
+            return []
+        results = self._collection.query(
+            query_embeddings=[embedding],  # type: ignore[arg-type]
+            n_results=min(k, self._collection.count()),
+            include=["documents", "metadatas", "distances"],
+        )
+        hits: list[VectorStoreHit] = []
+        for chunk_id, text, meta, dist in zip(
+            results["ids"][0],
+            results["documents"][0],  # type: ignore[index]
+            results["metadatas"][0],  # type: ignore[index]
+            results["distances"][0],  # type: ignore[index]
+        ):
+            hits.append(
+                VectorStoreHit(
+                    chunk_id=chunk_id,
+                    text=text,
+                    doc_id=meta["doc_id"],
+                    source_path=meta["source_path"],
+                    title=meta["title"],
+                    section_heading=meta["section_heading"] or None,
+                    chunk_index=int(meta["chunk_index"]),  # type: ignore[arg-type]
+                    strategy=meta["strategy"],
+                    similarity=1.0 - dist,
+                )
+            )
+        return hits
 
     def count(self) -> int:
         return self._collection.count()
