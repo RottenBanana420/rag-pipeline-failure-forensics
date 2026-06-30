@@ -1,4 +1,5 @@
 """End-to-end ingestion roundtrip: load → save → load_processed → verify."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -105,4 +106,6 @@ class TestIngestionRoundtrip:
         ]
         for raw_path in fixtures:
             docs = loader.load(raw_path)
-            assert all(d.text.strip() for d in docs), f"Empty text in docs from {raw_path.name}"
+            assert all(d.text.strip() for d in docs), (
+                f"Empty text in docs from {raw_path.name}"
+            )

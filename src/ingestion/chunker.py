@@ -61,7 +61,9 @@ class Chunker:
 
             sentences = _sentence_split(doc.text)
             if len(sentences) <= 1:
-                chunks.append(self._make_chunk(doc, doc.text.strip(), chunk_idx, "semantic", now))
+                chunks.append(
+                    self._make_chunk(doc, doc.text.strip(), chunk_idx, "semantic", now)
+                )
                 chunk_idx += 1
                 continue
 
@@ -88,7 +90,9 @@ class Chunker:
                 if (i - 1) in breakpoint_set:
                     text = " ".join(group).strip()
                     if text:
-                        chunks.append(self._make_chunk(doc, text, chunk_idx, "semantic", now))
+                        chunks.append(
+                            self._make_chunk(doc, text, chunk_idx, "semantic", now)
+                        )
                         chunk_idx += 1
                     group = [sentence]
                 else:
@@ -119,7 +123,9 @@ class Chunker:
                 continue
             for text in splitter.split_text(doc.text):
                 if text.strip():
-                    chunks.append(self._make_chunk(doc, text.strip(), chunk_idx, strategy, now))
+                    chunks.append(
+                        self._make_chunk(doc, text.strip(), chunk_idx, strategy, now)
+                    )
                     chunk_idx += 1
         return chunks
 

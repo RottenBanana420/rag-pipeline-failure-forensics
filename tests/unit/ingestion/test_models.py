@@ -33,7 +33,9 @@ class TestProcessedDocumentValidation:
         assert doc.page_number == 1
 
     def test_valid_html_with_section_heading(self):
-        doc = ProcessedDocument(**_valid_kwargs(source_format="html", section_heading="Overview"))
+        doc = ProcessedDocument(
+            **_valid_kwargs(source_format="html", section_heading="Overview")
+        )
         assert doc.section_heading == "Overview"
 
     def test_invalid_source_format_rejected(self):

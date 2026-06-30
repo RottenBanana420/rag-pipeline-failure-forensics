@@ -42,7 +42,9 @@ class TestSaveProcessed:
         json_files = list(out_dir.glob("*.json"))
         assert len(json_files) == len(docs)
 
-    def test_pdf_files_named_by_page(self, loader: DocumentLoader, tmp_path: Path, sample_pdf: Path):
+    def test_pdf_files_named_by_page(
+        self, loader: DocumentLoader, tmp_path: Path, sample_pdf: Path
+    ):
         docs = loader.load(sample_pdf)
         processed_dir = tmp_path / "processed"
         save_processed(docs, sample_pdf, processed_dir)
@@ -50,7 +52,9 @@ class TestSaveProcessed:
         assert (out_dir / "page_001.json").exists()
         assert (out_dir / "page_002.json").exists()
 
-    def test_non_pdf_files_named_by_section(self, loader: DocumentLoader, tmp_path: Path):
+    def test_non_pdf_files_named_by_section(
+        self, loader: DocumentLoader, tmp_path: Path
+    ):
         docs = loader.load(FIXTURES / "sample.md")
         raw_path = FIXTURES / "sample.md"
         processed_dir = tmp_path / "processed"

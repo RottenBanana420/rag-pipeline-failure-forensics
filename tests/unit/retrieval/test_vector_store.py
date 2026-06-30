@@ -24,7 +24,9 @@ class TestVectorStoreUpsert:
         vs = VectorStore(settings)
         vs.upsert([make_chunk(0, text="hello world")], [[1.0, 0.0, 0.0]])
 
-        col = chromadb.PersistentClient(path=settings.chroma_persist_dir_str).get_collection(COLLECTION_NAME)
+        col = chromadb.PersistentClient(
+            path=settings.chroma_persist_dir_str
+        ).get_collection(COLLECTION_NAME)
         metadatas = col.get(ids=["chunk-000"], include=["metadatas"])["metadatas"]
         assert metadatas is not None
         meta = metadatas[0]
@@ -104,7 +106,11 @@ class TestVectorStoreQuery:
         from src.retrieval.vector_store import VectorStore
 
         vs = VectorStore(settings)
-        chunks = [make_chunk(0, text="alpha"), make_chunk(1, text="beta"), make_chunk(2, text="gamma")]
+        chunks = [
+            make_chunk(0, text="alpha"),
+            make_chunk(1, text="beta"),
+            make_chunk(2, text="gamma"),
+        ]
         vs.upsert(chunks, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
 
         hits = vs.query([1.0, 0.0, 0.0], k=3)

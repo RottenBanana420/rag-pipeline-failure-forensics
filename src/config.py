@@ -6,6 +6,7 @@ unless you need isolated values in tests.
 
     from src.config import settings
 """
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -35,7 +35,9 @@ class VectorStore:
         all_distances: list[list[float]] = results["distances"]  # type: ignore[assignment]
         accepted_chunks: list[Chunk] = []
         accepted_embeddings: list[list[float]] = []
-        for chunk, embedding, distances in zip(chunks, embeddings, all_distances, strict=True):
+        for chunk, embedding, distances in zip(
+            chunks, embeddings, all_distances, strict=True
+        ):
             is_duplicate = bool(distances) and (1.0 - distances[0]) >= self._threshold
             if is_duplicate:
                 logger.debug(

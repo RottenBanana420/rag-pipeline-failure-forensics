@@ -9,7 +9,7 @@ from src.ingestion import Chunk
 
 
 def _tokenize(text: str) -> list[str]:
-    return re.sub(r'[^\w\s]', ' ', text.lower()).split()
+    return re.sub(r"[^\w\s]", " ", text.lower()).split()
 
 
 class BM25Store:
@@ -32,7 +32,9 @@ class BM25Store:
     def save(self) -> None:
         self._index_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self._index_path, "wb") as fh:
-            pickle.dump({"chunk_ids": self._chunk_ids, "corpus": self._tokenized_corpus}, fh)
+            pickle.dump(
+                {"chunk_ids": self._chunk_ids, "corpus": self._tokenized_corpus}, fh
+            )
 
     def load(self) -> None:
         if not self._index_path.exists():

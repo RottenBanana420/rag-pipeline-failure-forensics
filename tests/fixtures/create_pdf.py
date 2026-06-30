@@ -3,6 +3,7 @@
 Not a test file — called by conftest fixtures. Writes raw PDF bytes
 so there is no runtime dependency on reportlab or fpdf2.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -44,11 +45,7 @@ def create_sample_pdf(path: Path) -> None:
         + page2_stream
         + b"\nendstream\nendobj\n"
     )
-    record(
-        b"7 0 obj\n"
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\n"
-        b"endobj\n"
-    )
+    record(b"7 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n")
 
     xref_offset = sum(len(p) for p in body_parts)
     n_objects = len(offsets)

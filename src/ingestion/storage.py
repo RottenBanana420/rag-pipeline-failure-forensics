@@ -33,9 +33,7 @@ def save_processed(
             filename = f"page_{doc.page_number:03d}.json"
         else:
             filename = f"section_{i:03d}.json"
-        (out_dir / filename).write_text(
-            doc.model_dump_json(indent=2), encoding="utf-8"
-        )
+        (out_dir / filename).write_text(doc.model_dump_json(indent=2), encoding="utf-8")
 
 
 def load_processed(
@@ -63,6 +61,7 @@ def list_raw_files(raw_dir: Path) -> Iterator[Path]:
 # ------------------------------------------------------------------
 # Internal
 # ------------------------------------------------------------------
+
 
 def _output_dir(source_raw_path: Path, processed_dir: Path) -> Path:
     """Return the processed output directory for a given source file.

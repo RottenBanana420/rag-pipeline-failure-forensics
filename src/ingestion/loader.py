@@ -29,7 +29,9 @@ class DocumentLoader:
     def load(self, path: Path) -> list[ProcessedDocument]:
         suffix = path.suffix.lower()
         if suffix not in _SUPPORTED:
-            raise ValueError(f"Unsupported file extension: {suffix!r}. Supported: {_SUPPORTED}")
+            raise ValueError(
+                f"Unsupported file extension: {suffix!r}. Supported: {_SUPPORTED}"
+            )
 
         raw_bytes = path.read_bytes()
         if not raw_bytes.strip():
@@ -57,7 +59,9 @@ class DocumentLoader:
         raw_text = raw_bytes.decode("utf-8", errors="replace")
         heading_pattern = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 
-        splits: list[tuple[int, str]] = [(m.start(), m.group(2).strip()) for m in heading_pattern.finditer(raw_text)]
+        splits: list[tuple[int, str]] = [
+            (m.start(), m.group(2).strip()) for m in heading_pattern.finditer(raw_text)
+        ]
 
         if not splits:
             # No headings — whole file as one doc
@@ -199,7 +203,9 @@ class DocumentLoader:
 
         return docs
 
-    def _load_pdf(self, path: Path, source_path: str, did: str) -> list[ProcessedDocument]:
+    def _load_pdf(
+        self, path: Path, source_path: str, did: str
+    ) -> list[ProcessedDocument]:
         reader = PdfReader(str(path))
         docs: list[ProcessedDocument] = []
         now = _now_iso()
@@ -233,6 +239,7 @@ class DocumentLoader:
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
 
 def _strip_markdown(text: str) -> str:
     """Remove common Markdown syntax, leaving readable plaintext."""

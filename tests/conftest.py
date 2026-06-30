@@ -1,4 +1,5 @@
 """Shared pytest fixtures for the RAG pipeline test suite."""
+
 from __future__ import annotations
 
 import pytest
@@ -12,9 +13,19 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     `settings` singleton) to get freshly validated values from monkeypatched env.
     """
     for var in [
-        "OPENAI_API_KEY", "EMBEDDING_MODEL", "CHROMA_PERSIST_DIR",
-        "DENSE_TOP_K", "SPARSE_TOP_K", "RERANK_TOP_N",
-        "DENSE_WEIGHT", "SPARSE_WEIGHT", "DEDUP_THRESHOLD", "LOG_LEVEL",
-        "CHUNK_STRATEGY", "CHUNK_SIZE", "CHUNK_OVERLAP", "SEMANTIC_BREAKPOINT_PERCENTILE",
+        "OPENAI_API_KEY",
+        "EMBEDDING_MODEL",
+        "CHROMA_PERSIST_DIR",
+        "DENSE_TOP_K",
+        "SPARSE_TOP_K",
+        "RERANK_TOP_N",
+        "DENSE_WEIGHT",
+        "SPARSE_WEIGHT",
+        "DEDUP_THRESHOLD",
+        "LOG_LEVEL",
+        "CHUNK_STRATEGY",
+        "CHUNK_SIZE",
+        "CHUNK_OVERLAP",
+        "SEMANTIC_BREAKPOINT_PERCENTILE",
     ]:
         monkeypatch.delenv(var, raising=False)

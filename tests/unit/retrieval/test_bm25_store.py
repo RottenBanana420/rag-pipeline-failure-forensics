@@ -37,7 +37,13 @@ class TestBM25StoreGetScores:
         from src.retrieval.bm25_store import BM25Store
 
         store = BM25Store(settings)
-        store.add([make_chunk(0, "hello world"), make_chunk(1, "foo bar"), make_chunk(2, "unrelated content here")])
+        store.add(
+            [
+                make_chunk(0, "hello world"),
+                make_chunk(1, "foo bar"),
+                make_chunk(2, "unrelated content here"),
+            ]
+        )
         score_map = dict(store.get_scores("hello world"))
 
         assert score_map["chunk-000"] > score_map["chunk-001"]
@@ -51,11 +57,13 @@ class TestBM25StoreGetScores:
         from src.retrieval.bm25_store import BM25Store
 
         store = BM25Store(settings)
-        store.add([
-            make_chunk(0, "config-key: required value"),
-            make_chunk(1, "unrelated content here"),
-            make_chunk(2, "something else entirely"),
-        ])
+        store.add(
+            [
+                make_chunk(0, "config-key: required value"),
+                make_chunk(1, "unrelated content here"),
+                make_chunk(2, "something else entirely"),
+            ]
+        )
         scores = dict(store.get_scores("config key"))
 
         assert scores["chunk-000"] > 0.0
@@ -65,11 +73,13 @@ class TestBM25StoreGetScores:
         from src.retrieval.bm25_store import BM25Store
 
         store = BM25Store(settings)
-        store.add([
-            make_chunk(0, "error code 404 not found"),
-            make_chunk(1, "success response ok"),
-            make_chunk(2, "unrelated content here"),
-        ])
+        store.add(
+            [
+                make_chunk(0, "error code 404 not found"),
+                make_chunk(1, "success response ok"),
+                make_chunk(2, "unrelated content here"),
+            ]
+        )
         scores = dict(store.get_scores("error-code-404"))
 
         assert scores["chunk-000"] > 0.0
@@ -79,11 +89,13 @@ class TestBM25StoreGetScores:
         from src.retrieval.bm25_store import BM25Store
 
         store = BM25Store(settings)
-        store.add([
-            make_chunk(0, "set OPENAI_API_KEY in env"),
-            make_chunk(1, "other config values"),
-            make_chunk(2, "unrelated content here"),
-        ])
+        store.add(
+            [
+                make_chunk(0, "set OPENAI_API_KEY in env"),
+                make_chunk(1, "other config values"),
+                make_chunk(2, "unrelated content here"),
+            ]
+        )
         scores = dict(store.get_scores("openai_api_key"))
 
         assert scores["chunk-000"] > 0.0
@@ -106,7 +118,9 @@ class TestBM25StoreLazyRebuild:
         from src.retrieval.bm25_store import BM25Store
 
         store1 = BM25Store(settings)
-        store1.add([make_chunk(0, "hello world"), make_chunk(1, "unrelated content here")])
+        store1.add(
+            [make_chunk(0, "hello world"), make_chunk(1, "unrelated content here")]
+        )
         store1.save()
 
         store2 = BM25Store(settings)
@@ -122,7 +136,13 @@ class TestBM25StorePersistence:
         from src.retrieval.bm25_store import BM25Store
 
         store1 = BM25Store(settings)
-        store1.add([make_chunk(0, "hello world"), make_chunk(1, "foo bar"), make_chunk(2, "unrelated content here")])
+        store1.add(
+            [
+                make_chunk(0, "hello world"),
+                make_chunk(1, "foo bar"),
+                make_chunk(2, "unrelated content here"),
+            ]
+        )
         store1.save()
 
         store2 = BM25Store(settings)

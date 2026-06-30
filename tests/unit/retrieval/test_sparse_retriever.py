@@ -118,7 +118,9 @@ class TestSparseRetriever:
 
     def test_retrieve_limits_to_k(self):
         bm25 = MagicMock(spec=BM25Store)
-        bm25.get_scores.return_value = [(f"c-{i:03d}", float(10 - i)) for i in range(10)]
+        bm25.get_scores.return_value = [
+            (f"c-{i:03d}", float(10 - i)) for i in range(10)
+        ]
         vs = MagicMock(spec=VectorStore)
         vs.get_by_ids.return_value = [_hit(chunk_id=f"c-{i:03d}") for i in range(3)]
 
@@ -129,7 +131,9 @@ class TestSparseRetriever:
 
     def test_retrieve_default_k_is_10(self):
         bm25 = MagicMock(spec=BM25Store)
-        bm25.get_scores.return_value = [(f"c-{i:03d}", float(20 - i)) for i in range(20)]
+        bm25.get_scores.return_value = [
+            (f"c-{i:03d}", float(20 - i)) for i in range(20)
+        ]
         vs = MagicMock(spec=VectorStore)
         vs.get_by_ids.return_value = [_hit(chunk_id=f"c-{i:03d}") for i in range(10)]
 

@@ -33,9 +33,12 @@ class TestIndexerIndex:
         vector_store = VectorStore(settings)
         bm25_store = BM25Store(settings)
 
-        Indexer(settings, embedder=embedder, vector_store=vector_store, bm25_store=bm25_store).index(
-            [make_chunk(0), make_chunk(1)]
-        )
+        Indexer(
+            settings,
+            embedder=embedder,
+            vector_store=vector_store,
+            bm25_store=bm25_store,
+        ).index([make_chunk(0), make_chunk(1)])
 
         assert vector_store.count() == 2
         assert bm25_store.count() == 2
@@ -51,7 +54,12 @@ class TestIndexerIndex:
 
         vector_store = VectorStore(settings)
         bm25_store = BM25Store(settings)
-        indexer = Indexer(settings, embedder=embedder, vector_store=vector_store, bm25_store=bm25_store)
+        indexer = Indexer(
+            settings,
+            embedder=embedder,
+            vector_store=vector_store,
+            bm25_store=bm25_store,
+        )
 
         indexer.index([make_chunk(0)])
         stored = indexer.index([make_chunk(1)])  # same embedding → duplicate
@@ -66,12 +74,15 @@ class TestIndexerIndex:
         from src.retrieval.indexer import Indexer
         from src.retrieval.vector_store import VectorStore
 
-        assert Indexer(
-            settings,
-            embedder=MagicMock(spec=Embedder),
-            vector_store=MagicMock(spec=VectorStore),
-            bm25_store=MagicMock(spec=BM25Store),
-        ).index([]) == []
+        assert (
+            Indexer(
+                settings,
+                embedder=MagicMock(spec=Embedder),
+                vector_store=MagicMock(spec=VectorStore),
+                bm25_store=MagicMock(spec=BM25Store),
+            ).index([])
+            == []
+        )
 
     def test_index_persists_bm25_to_disk(self, settings, make_chunk):
         from src.retrieval.bm25_store import BM25Store
@@ -111,7 +122,10 @@ class TestIndexerIndex:
         embedder.embed.return_value = [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
 
         vs = MagicMock(spec=VectorStore)
-        vs.filter_duplicates.return_value = ([chunk_a], [[1.0, 0.0, 0.0]])  # chunk_dup filtered
+        vs.filter_duplicates.return_value = (
+            [chunk_a],
+            [[1.0, 0.0, 0.0]],
+        )  # chunk_dup filtered
         vs.upsert.return_value = [chunk_a.chunk_id]
 
         bm25 = MagicMock(spec=BM25Store)
@@ -122,5 +136,7 @@ class TestIndexerIndex:
             stored = indexer.index([chunk_a, chunk_dup])
 
         assert stored == [chunk_a.chunk_id]
-        assert any("duplicate" in r.message.lower() or "skipped" in r.message.lower()
-                   for r in caplog.records)
+        assert any(
+            "duplicate" in r.message.lower() or "skipped" in r.message.lower()
+            for r in caplog.records
+        )
