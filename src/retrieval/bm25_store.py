@@ -1,4 +1,5 @@
 import pickle
+import re
 from pathlib import Path
 
 from rank_bm25 import BM25Okapi
@@ -8,7 +9,7 @@ from src.ingestion import Chunk
 
 
 def _tokenize(text: str) -> list[str]:
-    return text.lower().split()
+    return re.sub(r'[^\w\s]', ' ', text.lower()).split()
 
 
 class BM25Store:
@@ -18,12 +19,15 @@ class BM25Store:
         self._tokenized_corpus: list[list[str]] = []
         self._bm25: BM25Okapi | None = None
 
+    def _ensure_index(self) -> None:
+        if self._bm25 is None and self._tokenized_corpus:
+            self._bm25 = BM25Okapi(self._tokenized_corpus)
+
     def add(self, chunks: list[Chunk]) -> None:
         for chunk in chunks:
             self._chunk_ids.append(chunk.chunk_id)
             self._tokenized_corpus.append(_tokenize(chunk.text))
-        if self._tokenized_corpus:
-            self._bm25 = BM25Okapi(self._tokenized_corpus)
+        self._bm25 = None  # invalidate; rebuilt lazily on first get_scores()
 
     def save(self) -> None:
         self._index_path.parent.mkdir(parents=True, exist_ok=True)
@@ -38,10 +42,10 @@ class BM25Store:
             data = pickle.load(fh)
         self._chunk_ids = data["chunk_ids"]
         self._tokenized_corpus = data["corpus"]
-        if self._tokenized_corpus:
-            self._bm25 = BM25Okapi(self._tokenized_corpus)
+        self._bm25 = None  # rebuilt lazily on first get_scores()
 
     def get_scores(self, query: str) -> list[tuple[str, float]]:
+        self._ensure_index()
         if self._bm25 is None or not self._chunk_ids:
             return []
         scores = self._bm25.get_scores(_tokenize(query))

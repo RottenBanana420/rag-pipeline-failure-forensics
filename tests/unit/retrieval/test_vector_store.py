@@ -165,3 +165,63 @@ class TestVectorStoreQuery:
         assert hit.chunk_index == 0
         assert hit.strategy == "fixed_size"
         assert 0.0 <= hit.similarity <= 1.0
+
+
+class TestVectorStoreGetByIds:
+    def test_get_by_ids_empty_list_returns_empty(self, settings):
+        from src.retrieval.vector_store import VectorStore
+
+        assert VectorStore(settings).get_by_ids([]) == []
+
+    def test_get_by_ids_returns_hit_with_correct_fields(self, settings, make_chunk):
+        from src.retrieval.vector_store import VectorStore
+
+        vs = VectorStore(settings)
+        chunk = make_chunk(0, text="hello world")
+        vs.upsert([chunk], [[1.0, 0.0, 0.0]])
+
+        hits = vs.get_by_ids(["chunk-000"])
+
+        assert len(hits) == 1
+        hit = hits[0]
+        assert hit.chunk_id == "chunk-000"
+        assert hit.text == "hello world"
+        assert hit.doc_id == "doc-000"
+        assert hit.source_path == "/data/doc-000.md"
+        assert hit.title == "Doc 0"
+        assert hit.section_heading is None
+        assert hit.chunk_index == 0
+        assert hit.strategy == "fixed_size"
+
+    def test_get_by_ids_similarity_is_zero_sentinel(self, settings, make_chunk):
+        from src.retrieval.vector_store import VectorStore
+
+        vs = VectorStore(settings)
+        vs.upsert([make_chunk(0)], [[1.0, 0.0, 0.0]])
+
+        hit = vs.get_by_ids(["chunk-000"])[0]
+
+        assert hit.similarity == 0.0
+
+    def test_get_by_ids_multiple_ids(self, settings, make_chunk):
+        from src.retrieval.vector_store import VectorStore
+
+        vs = VectorStore(settings)
+        chunks = [make_chunk(0, text="alpha"), make_chunk(1, text="beta")]
+        vs.upsert(chunks, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+
+        hits = vs.get_by_ids(["chunk-000", "chunk-001"])
+
+        chunk_ids = {h.chunk_id for h in hits}
+        assert chunk_ids == {"chunk-000", "chunk-001"}
+
+    def test_get_by_ids_missing_id_omitted(self, settings, make_chunk):
+        from src.retrieval.vector_store import VectorStore
+
+        vs = VectorStore(settings)
+        vs.upsert([make_chunk(0)], [[1.0, 0.0, 0.0]])
+
+        hits = vs.get_by_ids(["chunk-000", "chunk-999"])
+
+        assert len(hits) == 1
+        assert hits[0].chunk_id == "chunk-000"

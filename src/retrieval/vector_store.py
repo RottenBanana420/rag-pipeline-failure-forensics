@@ -109,5 +109,31 @@ class VectorStore:
             )
         return hits
 
+    def get_by_ids(self, ids: list[str]) -> list[VectorStoreHit]:
+        if not ids:
+            return []
+        results = self._collection.get(ids=ids, include=["documents", "metadatas"])
+        hits: list[VectorStoreHit] = []
+        for chunk_id, text, meta in zip(
+            results["ids"],
+            results["documents"],  # type: ignore[arg-type]
+            results["metadatas"],  # type: ignore[arg-type]
+            strict=True,
+        ):
+            hits.append(
+                VectorStoreHit(
+                    chunk_id=chunk_id,
+                    text=text,
+                    doc_id=meta["doc_id"],  # type: ignore[arg-type]
+                    source_path=meta["source_path"],  # type: ignore[arg-type]
+                    title=meta["title"],  # type: ignore[arg-type]
+                    section_heading=meta["section_heading"] or None,  # type: ignore[arg-type]
+                    chunk_index=int(meta["chunk_index"]),  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+                    strategy=meta["strategy"],  # type: ignore[arg-type]
+                    similarity=0.0,
+                )
+            )
+        return hits
+
     def count(self) -> int:
         return self._collection.count()
