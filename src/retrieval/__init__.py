@@ -3,6 +3,7 @@
 from src.retrieval.bm25_store import BM25Store
 from src.retrieval.dense_retriever import DenseRetriever
 from src.retrieval.embedder import Embedder
+from src.retrieval.fusion import reciprocal_rank_fusion
 from src.retrieval.indexer import Indexer
 from src.retrieval.models import VectorStoreHit
 from src.retrieval.sparse_retriever import SparseRetriever
@@ -16,4 +17,5 @@ __all__ = [
     "SparseRetriever",
     "VectorStore",
     "VectorStoreHit",
+    "reciprocal_rank_fusion",
 ]
