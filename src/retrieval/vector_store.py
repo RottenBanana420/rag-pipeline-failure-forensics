@@ -1,9 +1,13 @@
+import logging
+
 import chromadb
 
 from src.config import Settings
 from src.ingestion import Chunk
 
 COLLECTION_NAME = "rag_chunks"
+
+logger = logging.getLogger(__name__)
 
 
 class VectorStore:
@@ -32,9 +36,24 @@ class VectorStore:
         accepted_embeddings: list[list[float]] = []
         for chunk, embedding, distances in zip(chunks, embeddings, all_distances, strict=True):
             is_duplicate = bool(distances) and (1.0 - distances[0]) >= self._threshold
-            if not is_duplicate:
+            if is_duplicate:
+                logger.debug(
+                    "Skipping duplicate chunk %s (similarity=%.4f >= threshold=%.2f)",
+                    chunk.chunk_id,
+                    1.0 - distances[0],
+                    self._threshold,
+                )
+            else:
                 accepted_chunks.append(chunk)
                 accepted_embeddings.append(embedding)
+        skipped = len(chunks) - len(accepted_chunks)
+        if skipped:
+            logger.info(
+                "Dedup: skipped %d/%d chunks as near-duplicates (threshold=%.2f)",
+                skipped,
+                len(chunks),
+                self._threshold,
+            )
         return accepted_chunks, accepted_embeddings
 
     def upsert(self, chunks: list[Chunk], embeddings: list[list[float]]) -> list[str]:
