@@ -86,6 +86,7 @@ class TestVectorStoreFilterDuplicates:
     def test_duplicate_flagged_in_logs(self, settings, make_chunk, caplog):
         import logging
         from unittest.mock import patch
+
         from src.retrieval.vector_store import VectorStore
 
         vs = VectorStore(settings)
@@ -93,9 +94,8 @@ class TestVectorStoreFilterDuplicates:
 
         # Patch query to return distance 0.0 (similarity 1.0 → duplicate)
         mock_results = {"distances": [[0.0]]}
-        with patch.object(vs._collection, "query", return_value=mock_results):
-            with caplog.at_level(logging.DEBUG, logger="src.retrieval.vector_store"):
-                accepted, _ = vs.filter_duplicates([make_chunk(1)], [[1.0, 0.0, 0.0]])
+        with patch.object(vs._collection, "query", return_value=mock_results), caplog.at_level(logging.DEBUG, logger="src.retrieval.vector_store"):
+            accepted, _ = vs.filter_duplicates([make_chunk(1)], [[1.0, 0.0, 0.0]])
 
         assert accepted == []
         assert any("duplicate" in r.message.lower() for r in caplog.records)

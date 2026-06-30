@@ -95,6 +95,7 @@ class VectorStore:
             results["documents"][0],  # type: ignore[index]
             results["metadatas"][0],  # type: ignore[index]
             results["distances"][0],  # type: ignore[index]
+            strict=False,
         ):
             hits.append(
                 VectorStoreHit(
