@@ -16,11 +16,15 @@ def reciprocal_rank_fusion(
     hits_by_id: dict[str, VectorStoreHit] = {}
 
     for rank, hit in enumerate(dense_hits, start=1):
-        scores[hit.chunk_id] = scores.get(hit.chunk_id, 0.0) + dense_weight / (_RRF_K + rank)
+        scores[hit.chunk_id] = scores.get(hit.chunk_id, 0.0) + dense_weight / (
+            _RRF_K + rank
+        )
         hits_by_id[hit.chunk_id] = hit
 
     for rank, hit in enumerate(sparse_hits, start=1):
-        scores[hit.chunk_id] = scores.get(hit.chunk_id, 0.0) + sparse_weight / (_RRF_K + rank)
+        scores[hit.chunk_id] = scores.get(hit.chunk_id, 0.0) + sparse_weight / (
+            _RRF_K + rank
+        )
         hits_by_id.setdefault(hit.chunk_id, hit)
 
     sorted_ids = sorted(scores, key=scores.__getitem__, reverse=True)[:top_n]
