@@ -1,4 +1,5 @@
 import logging
+from typing import Protocol, runtime_checkable
 
 import chromadb
 
@@ -9,6 +10,37 @@ from src.retrieval.models import VectorStoreHit
 COLLECTION_NAME = "rag_chunks"
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class VectorStoreProtocol(Protocol):
+    """Structural interface that every vector store provider must satisfy."""
+
+    def filter_duplicates(
+        self,
+        chunks: list[Chunk],
+        embeddings: list[list[float]],
+    ) -> tuple[list[Chunk], list[list[float]]]:
+        """Return only chunks that are not near-duplicates of stored content."""
+        ...
+
+    def upsert(
+        self, chunks: list[Chunk], embeddings: list[list[float]]
+    ) -> list[str]:
+        """Insert or update chunks and their embeddings; return the stored IDs."""
+        ...
+
+    def query(self, embedding: list[float], k: int = 10) -> list[VectorStoreHit]:
+        """Return the *k* nearest neighbours for a query embedding."""
+        ...
+
+    def get_by_ids(self, ids: list[str]) -> list[VectorStoreHit]:
+        """Fetch specific chunks by their IDs."""
+        ...
+
+    def count(self) -> int:
+        """Return the total number of stored chunks."""
+        ...
 
 
 class VectorStore:

@@ -1,14 +1,52 @@
+from typing import Protocol, runtime_checkable
+
 from openai import OpenAI
 
 from src.config import Settings
 
 BATCH_SIZE = 200
 
+# Dimension counts for known OpenAI embedding models.
+_MODEL_DIMENSIONS: dict[str, int] = {
+    "text-embedding-3-small": 1536,
+    "text-embedding-3-large": 3072,
+    "text-embedding-ada-002": 1536,
+}
+
+
+@runtime_checkable
+class EmbedderProtocol(Protocol):
+    """Structural interface that every embedding provider must satisfy."""
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Return one embedding vector per text."""
+        ...
+
+    @property
+    def dimensions(self) -> int:
+        """Number of dimensions in each embedding vector."""
+        ...
+
+    @property
+    def provider_id(self) -> str:
+        """Short identifier for the provider, e.g. ``"openai"``."""
+        ...
+
 
 class Embedder:
     def __init__(self, settings: Settings) -> None:
         self._client = OpenAI(api_key=settings.openai_api_key)
         self._model = settings.embedding_model
+
+    @property
+    def dimensions(self) -> int:
+        """Number of dimensions produced by the configured embedding model."""
+        return _MODEL_DIMENSIONS.get(self._model, 1536)
+
+    @property
+    def provider_id(self) -> str:
+        """Provider identifier for this embedder."""
+        return "openai"
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
