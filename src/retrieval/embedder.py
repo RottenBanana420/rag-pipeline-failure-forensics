@@ -1,16 +1,23 @@
-"""Embedder module — protocol definition and backward-compatible shim.
+"""Embedder module — protocol definition, factory, and backward-compatible shim.
 
 ``EmbedderProtocol`` defines the structural interface for embedding providers.
+``make_embedder`` is a factory that reads ``settings.embedding_provider`` and
+returns the appropriate provider instance with lazy imports.
 ``OpenAIEmbedder`` is imported from ``src.retrieval.providers.embedder_openai``.
 ``Embedder`` is kept as a backward-compatibility alias.
 
-New code should import from ``src.retrieval.providers.embedder_openai`` or
-``src.retrieval.providers.embedder_sentence_transformers`` directly.
+New code should use ``make_embedder(settings)`` or import directly from the
+provider modules under ``src.retrieval.providers``.
 """
 
-from typing import Protocol, runtime_checkable
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from src.retrieval.providers.embedder_openai import OpenAIEmbedder
+
+if TYPE_CHECKING:
+    from src.config import Settings
 
 
 @runtime_checkable
@@ -30,6 +37,36 @@ class EmbedderProtocol(Protocol):
     def provider_id(self) -> str:
         """Short identifier for the provider, e.g. ``"openai/text-embedding-3-small"``."""
         ...
+
+
+def make_embedder(settings: Settings) -> EmbedderProtocol:
+    """Return an embedder instance for the provider specified in *settings*.
+
+    Provider modules are imported lazily inside this function so that importing
+    ``src.retrieval.embedder`` does not pull in optional heavy dependencies
+    (e.g. ``sentence-transformers``) unless they are actually needed.
+
+    Raises:
+        ValueError: If ``settings.embedding_provider`` is not a recognised value.
+    """
+    provider = settings.embedding_provider
+
+    if provider == "openai":
+        from src.retrieval.providers.embedder_openai import OpenAIEmbedder as _OpenAIEmbedder
+
+        return _OpenAIEmbedder(settings)
+
+    if provider == "sentence_transformers":
+        from src.retrieval.providers.embedder_sentence_transformers import (
+            SentenceTransformersEmbedder as _STEmbedder,
+        )
+
+        return _STEmbedder(model_name=settings.embedding_model)
+
+    valid = "openai, sentence_transformers, voyage, gemini, cohere"
+    raise ValueError(
+        f"Unknown embedding provider: {provider!r}. Valid providers are: {valid}"
+    )
 
 
 # Backward-compatibility alias — existing code that imports ``Embedder`` keeps working.
