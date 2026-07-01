@@ -15,7 +15,9 @@ def reset_embedder_globals():
 
     # Before test
     import src.retrieval.providers.embedder_openai
+    import src.retrieval.providers.embedder_sentence_transformers
     src.retrieval.providers.embedder_openai.OpenAI = None
+    src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer = None
     # Remove openai from sys.modules so lazy imports work correctly
     sys.modules.pop("openai", None)
     # Re-import embedder to ensure it uses the reset embedder_openai module
@@ -27,6 +29,7 @@ def reset_embedder_globals():
 
     # After test
     src.retrieval.providers.embedder_openai.OpenAI = None
+    src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer = None
     sys.modules.pop("openai", None)
 
 

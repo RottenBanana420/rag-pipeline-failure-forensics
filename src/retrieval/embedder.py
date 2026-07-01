@@ -56,10 +56,20 @@ def make_embedder(settings: Settings) -> EmbedderProtocol:
 
     if provider == "sentence_transformers":
         from src.retrieval.providers.embedder_sentence_transformers import (
+            DEFAULT_MODEL as _ST_DEFAULT_MODEL,
             SentenceTransformersEmbedder as _STEmbedder,
         )
 
-        return _STEmbedder(model_name=settings.embedding_model)
+        # Guard against accidentally passing an OpenAI model name (e.g. the default
+        # "text-embedding-3-small") to the ST provider when the user has not
+        # explicitly configured a sentence-transformers compatible model name.
+        _OPENAI_MODEL_PREFIXES = ("text-embedding",)
+        model_name = (
+            _ST_DEFAULT_MODEL
+            if any(settings.embedding_model.startswith(p) for p in _OPENAI_MODEL_PREFIXES)
+            else settings.embedding_model
+        )
+        return _STEmbedder(model_name=model_name)
 
     valid = "openai, sentence_transformers, voyage, gemini, cohere"
     raise ValueError(
