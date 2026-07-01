@@ -217,8 +217,15 @@ class ChromaVectorStore:
         return self._collection.count()
 
 
-def make_vector_store(settings: Settings) -> VectorStoreProtocol:
+def make_vector_store(
+    settings: Settings, embedder: EmbedderProtocol
+) -> VectorStoreProtocol:
     """Return a vector store instance for the provider specified in *settings*.
+
+    Args:
+        settings: Application settings containing the provider choice and config.
+        embedder: The embedder to use for dimension validation and provider
+            mismatch detection on existing collections.
 
     Raises:
         NotImplementedError: If ``settings.vector_store_provider`` is ``"qdrant"``
@@ -228,7 +235,7 @@ def make_vector_store(settings: Settings) -> VectorStoreProtocol:
     provider = settings.vector_store_provider
 
     if provider == "chroma":
-        return ChromaVectorStore(settings)
+        return ChromaVectorStore(settings, embedder=embedder)
 
     if provider == "qdrant":
         raise NotImplementedError("qdrant vector store is not yet implemented")

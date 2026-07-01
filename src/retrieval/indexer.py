@@ -20,7 +20,7 @@ class Indexer:
         bm25_store: BM25Store | None = None,
     ) -> None:
         self._embedder = embedder or make_embedder(settings)
-        self._vector_store = vector_store or make_vector_store(settings)
+        self._vector_store = vector_store or make_vector_store(settings, self._embedder)
         self._bm25_store = bm25_store or BM25Store(settings)
         self._bm25_store.load()
 
