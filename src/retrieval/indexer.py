@@ -4,8 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 from src.config import Settings
 from src.ingestion import Chunk
 from src.retrieval.bm25_store import BM25Store
-from src.retrieval.embedder import Embedder
-from src.retrieval.vector_store import VectorStore
+from src.retrieval.embedder import EmbedderProtocol, make_embedder
+from src.retrieval.vector_store import VectorStoreProtocol, make_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +15,12 @@ class Indexer:
         self,
         settings: Settings,
         *,
-        embedder: Embedder | None = None,
-        vector_store: VectorStore | None = None,
+        embedder: EmbedderProtocol | None = None,
+        vector_store: VectorStoreProtocol | None = None,
         bm25_store: BM25Store | None = None,
     ) -> None:
-        self._embedder = embedder or Embedder(settings)
-        self._vector_store = vector_store or VectorStore(settings)
+        self._embedder = embedder or make_embedder(settings)
+        self._vector_store = vector_store or make_vector_store(settings)
         self._bm25_store = bm25_store or BM25Store(settings)
         self._bm25_store.load()
 

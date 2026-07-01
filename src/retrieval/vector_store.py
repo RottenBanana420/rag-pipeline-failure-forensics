@@ -1,11 +1,24 @@
+"""Vector store module — protocol, ChromaVectorStore implementation, and factory.
+
+``VectorStoreProtocol`` defines the structural interface every vector store must satisfy.
+``ChromaVectorStore`` is the ChromaDB-backed implementation.
+``make_vector_store`` is a factory that reads ``settings.vector_store_provider`` and
+returns the appropriate provider instance.
+``VectorStore`` is kept as a backward-compatibility alias via module-level ``__getattr__``.
+"""
+
+from __future__ import annotations
+
 import logging
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import chromadb
 
-from src.config import Settings
 from src.ingestion import Chunk
 from src.retrieval.models import VectorStoreHit
+
+if TYPE_CHECKING:
+    from src.config import Settings
 
 COLLECTION_NAME = "rag_chunks"
 
@@ -43,7 +56,7 @@ class VectorStoreProtocol(Protocol):
         ...
 
 
-class VectorStore:
+class ChromaVectorStore:
     def __init__(self, settings: Settings) -> None:
         self._threshold = settings.dedup_threshold
         client = chromadb.PersistentClient(path=settings.chroma_persist_dir_str)
@@ -172,3 +185,37 @@ class VectorStore:
 
     def count(self) -> int:
         return self._collection.count()
+
+
+def make_vector_store(settings: Settings) -> VectorStoreProtocol:
+    """Return a vector store instance for the provider specified in *settings*.
+
+    Raises:
+        NotImplementedError: If ``settings.vector_store_provider`` is ``"qdrant"``
+            (not yet implemented).
+        ValueError: If ``settings.vector_store_provider`` is not a recognised value.
+    """
+    provider = settings.vector_store_provider
+
+    if provider == "chroma":
+        return ChromaVectorStore(settings)
+
+    if provider == "qdrant":
+        raise NotImplementedError("qdrant vector store is not yet implemented")
+
+    valid = "chroma, qdrant"
+    raise ValueError(
+        f"Unknown vector store provider: {provider!r}. Valid providers are: {valid}"
+    )
+
+
+def __getattr__(name: str) -> object:
+    """Lazy loader for backward-compatibility aliases.
+
+    Provides ``VectorStore`` as an alias for ``ChromaVectorStore`` without
+    polluting the module namespace at import time.
+    """
+    if name == "VectorStore":
+        globals()["VectorStore"] = ChromaVectorStore
+        return ChromaVectorStore
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
