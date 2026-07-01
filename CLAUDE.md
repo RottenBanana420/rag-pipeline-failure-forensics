@@ -11,8 +11,8 @@ Production-grade RAG (Retrieval-Augmented Generation) system with built-in obser
 | Component | Choice |
 |---|---|
 | Language | Python 3.11+ |
-| Embeddings | OpenAI `text-embedding-3-small` |
-| Vector Store | ChromaDB (file-based) or Qdrant (containerized) |
+| Embeddings | Pluggable via `EmbedderProtocol` — `sentence_transformers` (default, no API key) or `openai` (`text-embedding-3-small`, optional extra); `voyage`/`gemini`/`cohere` planned |
+| Vector Store | Pluggable via `VectorStoreProtocol` — ChromaDB (file-based, implemented) or Qdrant (containerized, planned) |
 | Sparse Search | `rank_bm25` |
 | LLM | GPT-4o or Claude Sonnet (via API) |
 | Chunking | LangChain text splitters |
@@ -36,6 +36,9 @@ cp .env.example .env
 
 # Install dependencies (editable install with dev extras)
 pip install -e ".[dev]"
+
+# Add an optional embedding/store provider extra, e.g. OpenAI embeddings or Qdrant
+pip install -e ".[dev,embed-openai]"
 
 # Run the API server
 uvicorn src.api.main:app --reload --port 8000
@@ -92,7 +95,11 @@ Every request is wrapped in a **Trace** (unique `trace_id`) containing **Spans**
 ```
 src/
   ingestion/          # Document loaders, chunking strategies, deduplication
-  retrieval/          # Embedder, VectorStore (ChromaDB + cosine dedup), BM25Store, Indexer
+  retrieval/          # EmbedderProtocol + make_embedder factory, VectorStoreProtocol +
+                      # make_vector_store factory, ChromaVectorStore (cosine dedup + dimension
+                      # guard), BM25Store, Indexer
+                      # providers/           # One module per embedding provider (embedder_openai.py,
+                      #                      # embedder_sentence_transformers.py; voyage/gemini/cohere planned)
                       # DenseRetriever (cosine top-k), SparseRetriever (BM25 + score norm)
                       # VectorStoreHit (shared query result model)
                       # reciprocal_rank_fusion (RRF, k=60, weighted), HybridRetriever
@@ -128,6 +135,8 @@ data/
 
 **Deduplication:** Before inserting, cosine similarity is checked against existing chunks. Chunks with similarity > 0.95 are skipped.
 
+**Provider abstraction:** Embedding and vector-store backends are chosen at runtime via `EMBEDDING_PROVIDER`/`VECTOR_STORE_PROVIDER` env vars, resolved through `make_embedder`/`make_vector_store` factories against `EmbedderProtocol`/`VectorStoreProtocol`. Provider SDKs are imported lazily inside the factory (not at module level) so installing one provider's extra doesn't require the others. On first write, `ChromaVectorStore` stamps the collection metadata with the embedder's `provider_id` and dimension count; on later opens it refuses to proceed if the configured provider doesn't match, instead of silently corrupting the index.
+
 **Tracing instrumentation:** A decorator pattern wraps any pipeline function in a span automatically. The span records the step name, serialized input/output, LLM prompt (if applicable), token count, latency, and confidence score. This means adding observability to a new step is one line of code.
 
 **Backward root-cause analysis:** When a trace is flagged as failed, the system walks spans in reverse and uses an LLM-as-judge to score each step's output quality relative to its input. The first span with a significant quality drop is classified as the root cause. Failure types: Retrieval Failure, Ranking Failure, Extraction Hallucination, Citation Error, Generation Incomplete, Context Loss.
@@ -146,9 +155,11 @@ If retrieval confidence is below threshold, the system returns a structured "I d
 ## Environment Variables
 
 ```
-OPENAI_API_KEY=        # Required for embeddings and GPT-4o
+OPENAI_API_KEY=        # Required only if EMBEDDING_PROVIDER=openai (or using GPT-4o for generation)
 ANTHROPIC_API_KEY=     # Required if using Claude Sonnet as LLM
-EMBEDDING_MODEL=       # Embedding model name (default: text-embedding-3-small)
+EMBEDDING_PROVIDER=    # openai | sentence_transformers | voyage | gemini | cohere (default: sentence_transformers)
+EMBEDDING_MODEL=       # Embedding model name (default: text-embedding-3-small; ignored by sentence_transformers unless set to a compatible model name)
+VECTOR_STORE_PROVIDER= # chroma | qdrant (default: chroma; qdrant not yet implemented)
 CHROMA_PERSIST_DIR=    # Path for ChromaDB persistence (default: ./data/chroma)
 SQLITE_DB_PATH=        # Path for trace index (default: ./data/traces.db)
 TRACE_OUTPUT_DIR=      # Path for JSON trace files (default: ./data/traces/)

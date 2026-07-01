@@ -9,7 +9,7 @@ Every pipeline step is traced; failures are diagnosed automatically via backward
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env   # fill in OPENAI_API_KEY
+cp .env.example .env   # defaults work out of the box (local sentence_transformers embeddings, no API key needed)
 pytest
 ```
 
@@ -35,10 +35,12 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 |-----------|--------|
 | Multi-format document loader (MD, TXT, HTML, PDF) | Done |
 | Configurable chunking strategies (fixed_size, recursive_header, semantic) | Done |
-| Embedding + ChromaDB storage | Done |
+| Embedding provider abstraction (`sentence_transformers` default, `openai` optional) | Done |
+| Vector store provider abstraction (ChromaDB implemented, Qdrant planned) | Done |
 | BM25 index | Done |
 | Deduplication (cosine similarity, threshold 0.95) | Done |
 | Dense retrieval (cosine top-k via ChromaDB) | Done |
 | Sparse retrieval (BM25, score-normalized) | Done |
 | RRF fusion (weighted, k=60) + HybridRetriever | Done |
+| Voyage / Gemini / Cohere embedding providers | Planned |
 | Cross-encoder reranker (cuts to top 5) | Planned |
