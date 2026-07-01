@@ -28,7 +28,7 @@ class TestOpenAIEmbedder:
     def test_embed_returns_vector_per_text(self, settings):
         from src.retrieval.providers.embedder_openai import OpenAIEmbedder
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI") as MockOpenAI:
+        with patch("openai.OpenAI") as MockOpenAI:
             MockOpenAI.return_value.embeddings.create.return_value = _mock_response(3)
             result = OpenAIEmbedder(settings).embed(["a", "b", "c"])
 
@@ -38,7 +38,7 @@ class TestOpenAIEmbedder:
     def test_embed_empty_input_returns_empty(self, settings):
         from src.retrieval.providers.embedder_openai import OpenAIEmbedder
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI"):
+        with patch("openai.OpenAI"):
             result = OpenAIEmbedder(settings).embed([])
 
         assert result == []
@@ -48,7 +48,7 @@ class TestOpenAIEmbedder:
 
         texts = ["text"] * (BATCH_SIZE + 1)
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI") as MockOpenAI:
+        with patch("openai.OpenAI") as MockOpenAI:
             mock_create = MockOpenAI.return_value.embeddings.create
             mock_create.side_effect = [_mock_response(BATCH_SIZE), _mock_response(1)]
             result = OpenAIEmbedder(settings).embed(texts)
@@ -59,7 +59,7 @@ class TestOpenAIEmbedder:
     def test_embed_passes_model_from_settings(self, settings):
         from src.retrieval.providers.embedder_openai import OpenAIEmbedder
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI") as MockOpenAI:
+        with patch("openai.OpenAI") as MockOpenAI:
             mock_create = MockOpenAI.return_value.embeddings.create
             mock_create.return_value = _mock_response(1)
             OpenAIEmbedder(settings).embed(["hello"])
@@ -69,7 +69,7 @@ class TestOpenAIEmbedder:
     def test_provider_id_includes_model_name(self, settings):
         from src.retrieval.providers.embedder_openai import OpenAIEmbedder
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI"):
+        with patch("openai.OpenAI"):
             embedder = OpenAIEmbedder(settings)
 
         assert embedder.provider_id == f"openai/{settings.embedding_model}"
@@ -84,7 +84,7 @@ class TestOpenAIEmbedder:
         s = Settings()
         from src.retrieval.providers.embedder_openai import OpenAIEmbedder
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI"):
+        with patch("openai.OpenAI"):
             embedder = OpenAIEmbedder(s)
 
         assert embedder.dimensions == 1536
@@ -99,7 +99,7 @@ class TestOpenAIEmbedder:
         s = Settings()
         from src.retrieval.providers.embedder_openai import OpenAIEmbedder
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI"):
+        with patch("openai.OpenAI"):
             embedder = OpenAIEmbedder(s)
 
         assert embedder.dimensions == 3072
@@ -114,7 +114,7 @@ class TestOpenAIEmbedder:
         s = Settings()
         from src.retrieval.providers.embedder_openai import OpenAIEmbedder
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI"):
+        with patch("openai.OpenAI"):
             embedder = OpenAIEmbedder(s)
             # Override model to simulate unknown
             embedder._model = "unknown-model"
@@ -125,7 +125,7 @@ class TestOpenAIEmbedder:
         from src.retrieval.embedder import EmbedderProtocol
         from src.retrieval.providers.embedder_openai import OpenAIEmbedder
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI"):
+        with patch("openai.OpenAI"):
             embedder = OpenAIEmbedder(settings)
 
         assert isinstance(embedder, EmbedderProtocol)

@@ -35,7 +35,7 @@ class TestMakeEmbedder:
         from src.retrieval.embedder import make_embedder
         from src.retrieval.providers.embedder_openai import OpenAIEmbedder
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI"):
+        with patch("openai.OpenAI"):
             result = make_embedder(openai_settings)
 
         assert isinstance(result, OpenAIEmbedder)
@@ -49,7 +49,7 @@ class TestMakeEmbedder:
         mock_model = MagicMock()
         mock_model.get_embedding_dimension.return_value = 384
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=mock_model,
         ):
             result = make_embedder(st_settings)
@@ -91,7 +91,7 @@ class TestMakeEmbedder:
     def test_result_satisfies_embedder_protocol(self, openai_settings):
         from src.retrieval.embedder import EmbedderProtocol, make_embedder
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI"):
+        with patch("openai.OpenAI"):
             result = make_embedder(openai_settings)
 
         assert isinstance(result, EmbedderProtocol)
@@ -117,7 +117,7 @@ class TestMakeEmbedder:
         """The openai embedder returned by the factory uses the model from settings."""
         from src.retrieval.embedder import make_embedder
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI"):
+        with patch("openai.OpenAI"):
             result = make_embedder(openai_settings)
 
         assert result._model == openai_settings.embedding_model
@@ -136,7 +136,7 @@ class TestMakeEmbedder:
         mock_model = MagicMock()
         mock_model.get_embedding_dimension.return_value = 384
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=mock_model,
         ):
             result = make_embedder(explicit_st_settings)
@@ -156,7 +156,7 @@ class TestMakeEmbedder:
         mock_model = MagicMock()
         mock_model.get_embedding_dimension.return_value = 384
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=mock_model,
         ) as mock_st_cls:
             result = make_embedder(st_settings)
@@ -187,7 +187,7 @@ class TestMakeEmbedder:
         mock_model = MagicMock()
         mock_model.get_embedding_dimension.return_value = 384
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=mock_model,
         ) as mock_st_cls:
             result = make_embedder(default_settings)

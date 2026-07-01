@@ -26,7 +26,7 @@ class TestSentenceTransformersEmbedder:
         )
 
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=_make_mock_st_model(),
         ):
             embedder = SentenceTransformersEmbedder()
@@ -39,7 +39,7 @@ class TestSentenceTransformersEmbedder:
         )
 
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=_make_mock_st_model(768),
         ):
             embedder = SentenceTransformersEmbedder(model_name="bert-base-nli-mean-tokens")
@@ -53,7 +53,7 @@ class TestSentenceTransformersEmbedder:
 
         mock_model = _make_mock_st_model(dim=384)
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=mock_model,
         ):
             embedder = SentenceTransformersEmbedder()
@@ -67,7 +67,7 @@ class TestSentenceTransformersEmbedder:
 
         mock_model = _make_mock_st_model(dim=768)
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=mock_model,
         ):
             embedder = SentenceTransformersEmbedder(model_name="some-768-model")
@@ -80,7 +80,7 @@ class TestSentenceTransformersEmbedder:
         )
 
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=_make_mock_st_model(),
         ):
             embedder = SentenceTransformersEmbedder()
@@ -93,7 +93,7 @@ class TestSentenceTransformersEmbedder:
         )
 
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=_make_mock_st_model(768),
         ):
             embedder = SentenceTransformersEmbedder(model_name="custom-model")
@@ -112,7 +112,7 @@ class TestSentenceTransformersEmbedder:
         mock_model.encode.return_value = np.array([[0.1] * dim, [0.2] * dim])
 
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=mock_model,
         ):
             embedder = SentenceTransformersEmbedder()
@@ -131,7 +131,7 @@ class TestSentenceTransformersEmbedder:
 
         mock_model = _make_mock_st_model()
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=mock_model,
         ):
             embedder = SentenceTransformersEmbedder()
@@ -151,7 +151,7 @@ class TestSentenceTransformersEmbedder:
         mock_model.encode.return_value = np.array([[0.1] * dim])
 
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=mock_model,
         ):
             embedder = SentenceTransformersEmbedder()
@@ -169,7 +169,7 @@ class TestSentenceTransformersEmbedder:
         )
 
         with patch(
-            "src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer",
+            "sentence_transformers.SentenceTransformer",
             return_value=_make_mock_st_model(),
         ):
             embedder = SentenceTransformersEmbedder()

@@ -1,10 +1,8 @@
 """OpenAI embedding provider.
 
-``openai`` is imported lazily inside the constructor so that this module can be
-imported without the package being present.  Tests should patch
-``src.retrieval.providers.embedder_openai.OpenAI`` — the name is bound once on
-the first instantiation and cached as a module-level name so subsequent
-patches also work.
+``openai`` is imported lazily inside ``__init__`` so that this module can be
+imported without the package being present.  Tests should patch ``openai.OpenAI``
+directly — Python's module cache means the patch is visible to the inline import.
 """
 
 from __future__ import annotations
@@ -20,20 +18,13 @@ _MODEL_DIMENSIONS: dict[str, int] = {
     "text-embedding-ada-002": 1536,
 }
 
-# Module-level placeholder — populated on first instantiation (lazy import).
-# Tests may patch this name directly.
-OpenAI: type | None = None
-
 
 class OpenAIEmbedder:
     """Embedding provider backed by the OpenAI Embeddings API."""
 
     def __init__(self, settings: Settings) -> None:
-        global OpenAI  # noqa: PLW0603
-        if OpenAI is None:
-            from openai import OpenAI as _OpenAI  # lazy import
+        from openai import OpenAI  # lazy import — not at module level
 
-            OpenAI = _OpenAI
         self._client = OpenAI(api_key=settings.openai_api_key)
         self._model = settings.embedding_model
 

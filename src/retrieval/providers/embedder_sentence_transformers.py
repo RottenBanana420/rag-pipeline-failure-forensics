@@ -1,32 +1,22 @@
 """SentenceTransformers embedding provider.
 
-``sentence_transformers`` is imported lazily inside the constructor so that
-this module can be imported without the package being present.  Tests should
-patch ``src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer``
-— the name is bound once on the first instantiation and cached as a module-level
-name so subsequent patches also work.
+``sentence_transformers`` is imported lazily inside ``__init__`` so that this
+module can be imported without the package being present.  Tests should patch
+``sentence_transformers.SentenceTransformer`` directly — Python's module cache
+means the patch is visible to the inline import.
 """
 
 from __future__ import annotations
 
 DEFAULT_MODEL = "all-MiniLM-L6-v2"
 
-# Module-level placeholder — populated on first instantiation (lazy import).
-# Tests may patch this name directly.
-SentenceTransformer: type | None = None
-
 
 class SentenceTransformersEmbedder:
     """Embedding provider backed by the ``sentence-transformers`` library."""
 
     def __init__(self, model_name: str = DEFAULT_MODEL) -> None:
-        global SentenceTransformer  # noqa: PLW0603
-        if SentenceTransformer is None:
-            from sentence_transformers import (  # lazy import
-                SentenceTransformer as _SentenceTransformer,
-            )
+        from sentence_transformers import SentenceTransformer  # lazy import — not at module level
 
-            SentenceTransformer = _SentenceTransformer
         self._model_name = model_name
         self._model = SentenceTransformer(model_name)
 
@@ -38,7 +28,8 @@ class SentenceTransformersEmbedder:
             raise RuntimeError(
                 f"Could not determine embedding dimension for model '{self._model_name}'"
             )
-        return int(dim)
+        result: int = dim  # mypy stubs type dim as Any; annotation narrows without a cast
+        return result
 
     @property
     def provider_id(self) -> str:

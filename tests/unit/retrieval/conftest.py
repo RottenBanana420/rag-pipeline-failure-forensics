@@ -3,36 +3,6 @@ import pytest
 from src.ingestion import Chunk
 
 
-@pytest.fixture(autouse=True)
-def reset_embedder_globals():
-    """Reset lazy-loaded global variables in embedder modules before and after each test.
-
-    This ensures that patches applied in tests don't interfere with subsequent tests
-    that rely on lazy loading behavior. Also removes the openai module from sys.modules
-    to force fresh lazy imports.
-    """
-    import sys
-
-    # Before test
-    import src.retrieval.providers.embedder_openai
-    import src.retrieval.providers.embedder_sentence_transformers
-    src.retrieval.providers.embedder_openai.OpenAI = None
-    src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer = None
-    # Remove openai from sys.modules so lazy imports work correctly
-    sys.modules.pop("openai", None)
-    # Re-import embedder to ensure it uses the reset embedder_openai module
-    if "src.retrieval.embedder" in sys.modules:
-        del sys.modules["src.retrieval.embedder"]
-    import src.retrieval.embedder  # noqa: F401
-
-    yield
-
-    # After test
-    src.retrieval.providers.embedder_openai.OpenAI = None
-    src.retrieval.providers.embedder_sentence_transformers.SentenceTransformer = None
-    sys.modules.pop("openai", None)
-
-
 @pytest.fixture
 def make_chunk():
     def _factory(idx: int, text: str = "sample text") -> Chunk:

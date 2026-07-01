@@ -53,7 +53,7 @@ class TestEmbedderProtocol:
     def test_concrete_embedder_satisfies_protocol(self):
         from src.retrieval.embedder import Embedder, EmbedderProtocol
 
-        with patch("src.retrieval.providers.embedder_openai.OpenAI"):
+        with patch("openai.OpenAI"):
             from src.config import Settings
 
             with patch.dict(
