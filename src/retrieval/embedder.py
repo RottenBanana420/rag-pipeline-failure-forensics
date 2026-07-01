@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from src.retrieval.providers.embedder_openai import OpenAIEmbedder
-
 if TYPE_CHECKING:
     from src.config import Settings
 
@@ -69,5 +67,15 @@ def make_embedder(settings: Settings) -> EmbedderProtocol:
     )
 
 
-# Backward-compatibility alias — existing code that imports ``Embedder`` keeps working.
-Embedder = OpenAIEmbedder
+def __getattr__(name: str) -> object:
+    """Lazy loader for backward-compatibility aliases.
+
+    Provides ``Embedder`` and ``OpenAIEmbedder`` without importing
+    ``src.retrieval.providers.embedder_openai`` at module load time.
+    """
+    if name in ("Embedder", "OpenAIEmbedder"):
+        from src.retrieval.providers.embedder_openai import OpenAIEmbedder as _cls
+        globals()["OpenAIEmbedder"] = _cls
+        globals()["Embedder"] = _cls
+        return _cls
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
