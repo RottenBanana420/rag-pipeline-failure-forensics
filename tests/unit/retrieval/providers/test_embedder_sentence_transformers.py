@@ -177,6 +177,52 @@ class TestSentenceTransformersEmbedder:
 
         assert isinstance(embedder, EmbedderProtocol)
 
+    def test_device_none_by_default(self):
+        from src.retrieval.providers.embedder_sentence_transformers import (
+            SentenceTransformersEmbedder,
+        )
+
+        with patch(
+            "sentence_transformers.SentenceTransformer",
+            return_value=_make_mock_st_model(),
+        ) as mock_ctor:
+            SentenceTransformersEmbedder()
+
+        mock_ctor.assert_called_once_with("all-MiniLM-L6-v2", device=None)
+
+    def test_device_passed_through(self):
+        from src.retrieval.providers.embedder_sentence_transformers import (
+            SentenceTransformersEmbedder,
+        )
+
+        with patch(
+            "sentence_transformers.SentenceTransformer",
+            return_value=_make_mock_st_model(),
+        ) as mock_ctor:
+            SentenceTransformersEmbedder(device="cpu")
+
+        mock_ctor.assert_called_once_with("all-MiniLM-L6-v2", device="cpu")
+
+    def test_logs_resolved_device(self, caplog):
+        import logging
+
+        from src.retrieval.providers.embedder_sentence_transformers import (
+            SentenceTransformersEmbedder,
+        )
+
+        mock_model = _make_mock_st_model()
+        mock_model.device = "cpu"
+        with (
+            patch("sentence_transformers.SentenceTransformer", return_value=mock_model),
+            caplog.at_level(logging.INFO),
+        ):
+            SentenceTransformersEmbedder()
+
+        assert any(
+            "all-MiniLM-L6-v2" in record.message and "cpu" in record.message
+            for record in caplog.records
+        )
+
     def test_sentence_transformers_imported_lazily(self):
         """SentenceTransformer should not be imported at module top-level."""
         import sys

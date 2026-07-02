@@ -89,6 +89,46 @@ class TestMakeEmbedder:
 
         assert isinstance(result, SentenceTransformersEmbedder)
 
+    def test_sentence_transformers_provider_passes_device_none_when_auto(self, st_settings):
+        """settings.embedding_device defaults to "auto"; factory must translate that to
+        device=None so the underlying library auto-detects CUDA/MPS/CPU itself."""
+        from src.retrieval.embedder import make_embedder
+        from src.retrieval.providers.embedder_sentence_transformers import DEFAULT_MODEL
+
+        assert st_settings.embedding_device == "auto"
+        mock_model = MagicMock()
+        mock_model.get_embedding_dimension.return_value = 384
+        with patch(
+            "sentence_transformers.SentenceTransformer",
+            return_value=mock_model,
+        ) as mock_st_cls:
+            make_embedder(st_settings)
+
+        mock_st_cls.assert_called_once_with(DEFAULT_MODEL, device=None)
+
+    def test_sentence_transformers_provider_passes_explicit_device(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv("EMBEDDING_PROVIDER", "sentence_transformers")
+        monkeypatch.setenv("EMBEDDING_DEVICE", "cpu")
+        monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
+        monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
+        from src.config import Settings
+        from src.retrieval.embedder import make_embedder
+        from src.retrieval.providers.embedder_sentence_transformers import DEFAULT_MODEL
+
+        settings = Settings()
+        mock_model = MagicMock()
+        mock_model.get_embedding_dimension.return_value = 384
+        with patch(
+            "sentence_transformers.SentenceTransformer",
+            return_value=mock_model,
+        ) as mock_st_cls:
+            make_embedder(settings)
+
+        mock_st_cls.assert_called_once_with(DEFAULT_MODEL, device="cpu")
+
     def test_voyage_provider_returns_voyage_embedder(self, voyage_settings):
         from src.retrieval.embedder import make_embedder
         from src.retrieval.providers.embedder_voyage import VoyageEmbedder
@@ -276,7 +316,7 @@ class TestMakeEmbedder:
             result = make_embedder(st_settings)
 
         # The ST class must have been called with the ST default, not the OpenAI model name
-        mock_st_cls.assert_called_once_with(DEFAULT_MODEL)
+        mock_st_cls.assert_called_once_with(DEFAULT_MODEL, device=None)
         assert result._model_name == DEFAULT_MODEL
 
     def test_default_settings_use_st_default_model(self, monkeypatch, tmp_path):
@@ -306,6 +346,6 @@ class TestMakeEmbedder:
         ) as mock_st_cls:
             result = make_embedder(default_settings)
 
-        mock_st_cls.assert_called_once_with(DEFAULT_MODEL)
+        mock_st_cls.assert_called_once_with(DEFAULT_MODEL, device=None)
         assert result._model_name == DEFAULT_MODEL
         assert DEFAULT_MODEL == "all-MiniLM-L6-v2"

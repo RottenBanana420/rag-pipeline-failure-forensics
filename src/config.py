@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     embedding_provider: Literal["openai", "sentence_transformers", "voyage", "gemini", "cohere"] = Field(
         default="sentence_transformers"
     )
+    embedding_device: Literal["auto", "cpu", "cuda", "mps"] = Field(default="auto")
 
     # Vector store
     vector_store_provider: Literal["chroma", "qdrant"] = Field(default="chroma")

@@ -63,6 +63,11 @@ class TestSettingsDefaults:
 
         assert Settings().openai_api_key == ""
 
+    def test_embedding_device_default(self, clean_env):
+        from src.config import Settings
+
+        assert Settings().embedding_device == "auto"
+
 
 class TestSettingsOverrides:
     def test_log_level_env_override(self, monkeypatch, clean_env):
@@ -94,6 +99,12 @@ class TestSettingsOverrides:
         from src.config import Settings
 
         assert Settings().embedding_model == "text-embedding-3-large"
+
+    def test_embedding_device_env_override(self, monkeypatch, clean_env):
+        monkeypatch.setenv("EMBEDDING_DEVICE", "cpu")
+        from src.config import Settings
+
+        assert Settings().embedding_device == "cpu"
 
 
 class TestSettingsValidation:
@@ -130,6 +141,13 @@ class TestSettingsValidation:
         from src.config import Settings
 
         assert Settings().log_level == "WARNING"
+
+    def test_invalid_embedding_device_raises(self, monkeypatch, clean_env):
+        monkeypatch.setenv("EMBEDDING_DEVICE", "tpu")
+        from src.config import Settings
+
+        with pytest.raises(ValidationError, match="embedding_device"):
+            Settings()
 
 
 class TestSettingsProperties:

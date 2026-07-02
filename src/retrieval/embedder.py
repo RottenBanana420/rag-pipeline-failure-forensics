@@ -73,7 +73,8 @@ def make_embedder(settings: Settings) -> EmbedderProtocol:
             if any(settings.embedding_model.startswith(p) for p in _OPENAI_MODEL_PREFIXES)
             else settings.embedding_model
         )
-        return _STEmbedder(model_name=model_name)
+        device = None if settings.embedding_device == "auto" else settings.embedding_device
+        return _STEmbedder(model_name=model_name, device=device)
 
     if provider == "voyage":
         from src.retrieval.providers.embedder_voyage import (

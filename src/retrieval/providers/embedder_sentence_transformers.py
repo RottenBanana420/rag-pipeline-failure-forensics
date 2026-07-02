@@ -8,19 +8,28 @@ means the patch is visible to the inline import.
 
 from __future__ import annotations
 
+import logging
+
 DEFAULT_MODEL = "all-MiniLM-L6-v2"
+
+logger = logging.getLogger(__name__)
 
 
 class SentenceTransformersEmbedder:
     """Embedding provider backed by the ``sentence-transformers`` library."""
 
-    def __init__(self, model_name: str = DEFAULT_MODEL) -> None:
+    def __init__(self, model_name: str = DEFAULT_MODEL, device: str | None = None) -> None:
         from sentence_transformers import (
             SentenceTransformer,  # lazy import — not at module level
         )
 
         self._model_name = model_name
-        self._model = SentenceTransformer(model_name)
+        self._model = SentenceTransformer(model_name, device=device)
+        logger.info(
+            "SentenceTransformersEmbedder loaded model=%s device=%s",
+            model_name,
+            self._model.device,
+        )
 
     @property
     def dimensions(self) -> int:
