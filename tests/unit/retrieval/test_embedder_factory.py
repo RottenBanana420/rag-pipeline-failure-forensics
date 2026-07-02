@@ -27,6 +27,39 @@ def st_settings(monkeypatch, tmp_path):
     return Settings()
 
 
+@pytest.fixture
+def voyage_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("VOYAGE_API_KEY", "test-key")
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "voyage")
+    monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
+    monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
+    from src.config import Settings
+
+    return Settings()
+
+
+@pytest.fixture
+def gemini_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "gemini")
+    monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
+    monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
+    from src.config import Settings
+
+    return Settings()
+
+
+@pytest.fixture
+def cohere_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("COHERE_API_KEY", "test-key")
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "cohere")
+    monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
+    monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
+    from src.config import Settings
+
+    return Settings()
+
+
 class TestMakeEmbedder:
     def test_importable(self):
         from src.retrieval.embedder import make_embedder  # noqa: F401
@@ -55,6 +88,87 @@ class TestMakeEmbedder:
             result = make_embedder(st_settings)
 
         assert isinstance(result, SentenceTransformersEmbedder)
+
+    def test_voyage_provider_returns_voyage_embedder(self, voyage_settings):
+        from src.retrieval.embedder import make_embedder
+        from src.retrieval.providers.embedder_voyage import VoyageEmbedder
+
+        with patch("voyageai.Client"):
+            result = make_embedder(voyage_settings)
+
+        assert isinstance(result, VoyageEmbedder)
+
+    def test_voyage_falls_back_to_default_when_openai_model_configured(
+        self, voyage_settings
+    ):
+        """With default settings, embedding_model is "text-embedding-3-small" (an OpenAI
+        model). make_embedder must detect this isn't a Voyage model name and substitute
+        the Voyage provider's own default instead of passing it straight through.
+        """
+        from src.retrieval.embedder import make_embedder
+        from src.retrieval.providers.embedder_voyage import DEFAULT_MODEL
+
+        with patch("voyageai.Client"):
+            result = make_embedder(voyage_settings)
+
+        assert result._model == DEFAULT_MODEL
+
+    def test_voyage_embedder_uses_settings_model_when_voyage_compatible(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("VOYAGE_API_KEY", "test-key")
+        monkeypatch.setenv("EMBEDDING_PROVIDER", "voyage")
+        monkeypatch.setenv("EMBEDDING_MODEL", "voyage-3-large")
+        monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
+        monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
+        from src.config import Settings
+        from src.retrieval.embedder import make_embedder
+
+        explicit_voyage_settings = Settings()
+        with patch("voyageai.Client"):
+            result = make_embedder(explicit_voyage_settings)
+
+        assert result._model == "voyage-3-large"
+
+    def test_gemini_provider_returns_gemini_embedder(self, gemini_settings):
+        from src.retrieval.embedder import make_embedder
+        from src.retrieval.providers.embedder_gemini import GeminiEmbedder
+
+        with patch("google.genai.Client"):
+            result = make_embedder(gemini_settings)
+
+        assert isinstance(result, GeminiEmbedder)
+
+    def test_gemini_falls_back_to_default_when_openai_model_configured(
+        self, gemini_settings
+    ):
+        from src.retrieval.embedder import make_embedder
+        from src.retrieval.providers.embedder_gemini import DEFAULT_MODEL
+
+        with patch("google.genai.Client"):
+            result = make_embedder(gemini_settings)
+
+        assert result._model == DEFAULT_MODEL
+
+    def test_cohere_provider_returns_cohere_embedder(self, cohere_settings):
+        from src.retrieval.embedder import make_embedder
+        from src.retrieval.providers.embedder_cohere import CohereEmbedder
+
+        with patch("cohere.ClientV2"):
+            result = make_embedder(cohere_settings)
+
+        assert isinstance(result, CohereEmbedder)
+
+    def test_cohere_falls_back_to_default_when_openai_model_configured(
+        self, cohere_settings
+    ):
+        from src.retrieval.embedder import make_embedder
+        from src.retrieval.providers.embedder_cohere import DEFAULT_MODEL
+
+        with patch("cohere.ClientV2"):
+            result = make_embedder(cohere_settings)
+
+        assert result._model == DEFAULT_MODEL
 
     def test_unknown_provider_raises_value_error(self, monkeypatch, tmp_path):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")

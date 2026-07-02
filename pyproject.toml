@@ -37,7 +37,7 @@ dependencies = [
 [project.optional-dependencies]
 embed-openai = ["openai>=1.30"]
 embed-voyage = ["voyageai>=0.3"]
-embed-gemini = ["google-generativeai>=0.8"]
+embed-gemini = ["google-genai>=1.0"]
 embed-cohere = ["cohere>=5.0"]
 embed-local = ["sentence-transformers>=3.0"]
 store-qdrant = ["qdrant-client>=1.9"]

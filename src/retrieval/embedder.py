@@ -75,6 +75,57 @@ def make_embedder(settings: Settings) -> EmbedderProtocol:
         )
         return _STEmbedder(model_name=model_name)
 
+    if provider == "voyage":
+        from src.retrieval.providers.embedder_voyage import (
+            DEFAULT_MODEL as _VOYAGE_DEFAULT_MODEL,
+        )
+        from src.retrieval.providers.embedder_voyage import (
+            VoyageEmbedder as _VoyageEmbedder,
+        )
+
+        model_name = (
+            settings.embedding_model
+            if settings.embedding_model.startswith("voyage")
+            else _VOYAGE_DEFAULT_MODEL
+        )
+        return _VoyageEmbedder(
+            settings.model_copy(update={"embedding_model": model_name})
+        )
+
+    if provider == "gemini":
+        from src.retrieval.providers.embedder_gemini import (
+            DEFAULT_MODEL as _GEMINI_DEFAULT_MODEL,
+        )
+        from src.retrieval.providers.embedder_gemini import (
+            GeminiEmbedder as _GeminiEmbedder,
+        )
+
+        model_name = (
+            settings.embedding_model
+            if settings.embedding_model.startswith("gemini-embedding")
+            else _GEMINI_DEFAULT_MODEL
+        )
+        return _GeminiEmbedder(
+            settings.model_copy(update={"embedding_model": model_name})
+        )
+
+    if provider == "cohere":
+        from src.retrieval.providers.embedder_cohere import (
+            DEFAULT_MODEL as _COHERE_DEFAULT_MODEL,
+        )
+        from src.retrieval.providers.embedder_cohere import (
+            CohereEmbedder as _CohereEmbedder,
+        )
+
+        model_name = (
+            settings.embedding_model
+            if settings.embedding_model.startswith("embed-")
+            else _COHERE_DEFAULT_MODEL
+        )
+        return _CohereEmbedder(
+            settings.model_copy(update={"embedding_model": model_name})
+        )
+
     valid = "openai, sentence_transformers, voyage, gemini, cohere"
     raise ValueError(
         f"Unknown embedding provider: {provider!r}. Valid providers are: {valid}"

@@ -26,6 +26,9 @@ class Settings(BaseSettings):
 
     # API keys
     openai_api_key: str = Field(default="", description="OpenAI API key")
+    voyage_api_key: str = Field(default="", description="Voyage AI API key")
+    gemini_api_key: str = Field(default="", description="Google Gemini API key")
+    cohere_api_key: str = Field(default="", description="Cohere API key")
 
     # Embedding
     embedding_model: str = Field(default="text-embedding-3-small")
