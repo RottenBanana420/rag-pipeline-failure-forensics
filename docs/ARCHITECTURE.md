@@ -1,5 +1,31 @@
 # Architecture Overview
 
+## 2026-07-02 — Phase 1: Voyage, Gemini, Cohere Embedding Providers (Complete)
+
+### Additional Embedding Providers
+
+Fills in the three providers that were stubbed as "planned" in `Settings`'s `Literal` type and the factory's `NotImplementedError`/`ValueError` branches.
+
+| Provider | Class | File | Default model | Batch size |
+|---|---|---|---|---|
+| `voyage` | `VoyageEmbedder` | `providers/embedder_voyage.py` | `voyage-3.5` | 128 (Voyage's documented rate-limit-safe batch) |
+| `gemini` | `GeminiEmbedder` | `providers/embedder_gemini.py` | `gemini-embedding-001` | 100 (conservative default — no documented fixed limit) |
+| `cohere` | `CohereEmbedder` | `providers/embedder_cohere.py` | `embed-v4.0` | 96 (Cohere's documented max per `embed()` call) |
+
+**Gemini targets `google-genai`, not `google-generativeai`** — the unified SDK Google is standardizing on, superseding the legacy package originally pinned as a placeholder in `pyproject.toml`.
+
+Each provider follows the pattern established by `OpenAIEmbedder`: batched calls sized to the provider's own documented limits, an API-key field on `Settings`, and a `make_embedder` branch with the same OpenAI-model-name guard (falls back to the provider's own default if `settings.embedding_model` looks like an OpenAI model name).
+
+---
+
+## 2026-07-02 — ChromaVectorStore: Required Embedder Guard
+
+`ChromaVectorStore` previously accepted `embedder=None` and silently skipped both metadata stamping and the provider/dimension mismatch check when constructed directly — bypassing the guard that `make_vector_store` already enforced. A collection created this way could later be reopened under a mismatched embedding provider with no warning, until a raw ChromaDB dimension error surfaced deep inside a query.
+
+`embedder` is now a required constructor argument, matching `make_vector_store`'s existing contract. Direct construction without an embedder now fails fast at startup instead of corrupting silently at query time.
+
+---
+
 ## 2026-06-30 — Phase 1: Embedding & Vector Store Provider Abstraction (Complete)
 
 ### Provider Abstraction
@@ -16,9 +42,12 @@
 |---|---|---|---|
 | `sentence_transformers` (default) | `SentenceTransformersEmbedder` | `src/retrieval/providers/embedder_sentence_transformers.py` | Nothing — already a base dependency |
 | `openai` | `OpenAIEmbedder` | `src/retrieval/providers/embedder_openai.py` | `OPENAI_API_KEY`, `pip install -e ".[embed-openai]"` |
+| `voyage` | `VoyageEmbedder` | `src/retrieval/providers/embedder_voyage.py` | `VOYAGE_API_KEY`, `pip install -e ".[embed-voyage]"` |
+| `gemini` | `GeminiEmbedder` | `src/retrieval/providers/embedder_gemini.py` | `GEMINI_API_KEY`, `pip install -e ".[embed-gemini]"` |
+| `cohere` | `CohereEmbedder` | `src/retrieval/providers/embedder_cohere.py` | `COHERE_API_KEY`, `pip install -e ".[embed-cohere]"` |
 | `chroma` (default vector store) | `ChromaVectorStore` | `src/retrieval/vector_store.py` | Nothing — already a base dependency |
 
-`voyage`, `gemini`, `cohere` embedding providers and the `qdrant` vector store are declared in `Settings`'s `Literal` types and `pyproject.toml` optional extras but not yet implemented; selecting them raises `NotImplementedError`/`ValueError` from the factory.
+The `qdrant` vector store is declared in `Settings`'s `Literal` type and `pyproject.toml`'s `store-qdrant` extra but not yet implemented; selecting it raises `NotImplementedError` from `make_vector_store`. All five embedding providers above are fully implemented.
 
 **Dimension guard:** Embedding dimensions vary by provider (e.g. OpenAI `text-embedding-3-small` = 1536, `all-MiniLM-L6-v2` = 384). `ChromaVectorStore` stamps `embedding_provider` and `embedding_dimensions` into the collection's metadata the first time it's created. On every later open, if an `embedder` is passed and its `provider_id` doesn't match the stored metadata, construction raises `ValueError` with a message telling the user to delete `data/chroma/` and re-index — this prevents silently querying a collection with vectors from a different embedding space.
 
@@ -253,8 +282,9 @@ src/
     storage.py        # save_processed / load_processed / list_raw_files
   retrieval/          # EmbedderProtocol/make_embedder, VectorStoreProtocol/make_vector_store,
                       # BM25Store, Indexer (complete)
-                      # providers/        # embedder_openai.py, embedder_sentence_transformers.py
-                      #                   # (voyage/gemini/cohere planned)
+                      # providers/        # embedder_openai.py, embedder_sentence_transformers.py,
+                      #                   # embedder_voyage.py, embedder_gemini.py, embedder_cohere.py
+                      #                   # (all complete; qdrant vector store still planned)
                       # DenseRetriever, SparseRetriever, VectorStoreHit (complete)
                       # reciprocal_rank_fusion, HybridRetriever (complete)
                       # reranker [planned]

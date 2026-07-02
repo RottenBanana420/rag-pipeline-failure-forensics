@@ -1,5 +1,11 @@
 # Architecture Decision Records
 
+## 2026-07-02 — Required `embedder` on `ChromaVectorStore`
+
+**`embedder` is a required constructor argument, not `Optional`** — `ChromaVectorStore` previously accepted `embedder=None`, which silently skipped both metadata stamping and the provider/dimension mismatch guard when the class was constructed directly (bypassing `make_vector_store`, which already required an embedder). A collection built this way could be reopened later under a mismatched embedding provider with no warning, surfacing only as a raw ChromaDB dimension error deep inside a query. Requiring `embedder` unconditionally closes that bypass and makes the two construction paths (`make_vector_store` and direct instantiation) enforce the same guarantee, matching the project's "fail fast at startup, not silently at query time" principle already used for the dimension guard itself.
+
+---
+
 ## 2026-06-28 — Phase 1 Scaffold
 
 **pyproject.toml as canonical dependency file** — Single source of truth for dependencies; `requirements.txt` is generated via `pip freeze` for locked reproducibility. Dev extras in `[project.optional-dependencies]` so `pip install -e ".[dev]"` installs everything in one step.

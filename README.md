@@ -42,5 +42,5 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | Dense retrieval (cosine top-k via ChromaDB) | Done |
 | Sparse retrieval (BM25, score-normalized) | Done |
 | RRF fusion (weighted, k=60) + HybridRetriever | Done |
-| Voyage / Gemini / Cohere embedding providers | Planned |
+| Voyage / Gemini / Cohere embedding providers | Done |
 | Cross-encoder reranker (cuts to top 5) | Planned |

@@ -11,7 +11,7 @@ Production-grade RAG (Retrieval-Augmented Generation) system with built-in obser
 | Component | Choice |
 |---|---|
 | Language | Python 3.11+ |
-| Embeddings | Pluggable via `EmbedderProtocol` — `sentence_transformers` (default, no API key) or `openai` (`text-embedding-3-small`, optional extra); `voyage`/`gemini`/`cohere` planned |
+| Embeddings | Pluggable via `EmbedderProtocol` — `sentence_transformers` (default, no API key), `openai` (`text-embedding-3-small`), `voyage` (`voyage-3.5`), `gemini` (`gemini-embedding-001`), or `cohere` (`embed-v4.0`); all API providers require their optional extra (`embed-openai`, `embed-voyage`, `embed-gemini`, `embed-cohere`) |
 | Vector Store | Pluggable via `VectorStoreProtocol` — ChromaDB (file-based, implemented) or Qdrant (containerized, planned) |
 | Sparse Search | `rank_bm25` |
 | LLM | GPT-4o or Claude Sonnet (via API) |
@@ -40,9 +40,6 @@ pip install -e ".[dev]"
 # Add an optional embedding/store provider extra, e.g. OpenAI embeddings or Qdrant
 pip install -e ".[dev,embed-openai]"
 
-# Run the API server
-uvicorn src.api.main:app --reload --port 8000
-
 # Run all tests
 pytest
 
@@ -58,15 +55,15 @@ ruff format src/ tests/
 
 # Type check
 mypy src/
+```
 
-# Start full stack (API + ChromaDB + frontend)
-docker compose up
+The following commands are part of the target end-state (later phases) and are **not runnable yet** — the underlying code is still a stub:
 
-# Seed the document corpus for testing
-python scripts/seed_corpus.py
-
-# Run evaluation suite
-python scripts/run_eval.py
+```bash
+uvicorn src.api.main:app --reload --port 8000  # src/api/main.py not yet built (Phase 7)
+docker compose up                                # no docker-compose.yml yet (Phase 7)
+python scripts/seed_corpus.py                    # stub, raises NotImplementedError (Phase 1 follow-up)
+python scripts/run_eval.py                        # stub, raises NotImplementedError (Phase 6)
 ```
 
 ## Architecture
@@ -99,7 +96,8 @@ src/
                       # make_vector_store factory, ChromaVectorStore (cosine dedup + dimension
                       # guard), BM25Store, Indexer
                       # providers/           # One module per embedding provider (embedder_openai.py,
-                      #                      # embedder_sentence_transformers.py; voyage/gemini/cohere planned)
+                      #                      # embedder_sentence_transformers.py, embedder_voyage.py,
+                      #                      # embedder_gemini.py, embedder_cohere.py)
                       # DenseRetriever (cosine top-k), SparseRetriever (BM25 + score norm)
                       # VectorStoreHit (shared query result model)
                       # reciprocal_rank_fusion (RRF, k=60, weighted), HybridRetriever
@@ -159,6 +157,7 @@ OPENAI_API_KEY=        # Required only if EMBEDDING_PROVIDER=openai (or using GP
 ANTHROPIC_API_KEY=     # Required if using Claude Sonnet as LLM
 EMBEDDING_PROVIDER=    # openai | sentence_transformers | voyage | gemini | cohere (default: sentence_transformers)
 EMBEDDING_MODEL=       # Embedding model name (default: text-embedding-3-small; ignored by sentence_transformers unless set to a compatible model name)
+EMBEDDING_DEVICE=      # auto | cpu | cuda | mps (default: auto; only affects sentence_transformers — API providers have no local device). "auto" lets the library auto-detect CUDA/MPS/CPU; the resolved device is logged at startup.
 VECTOR_STORE_PROVIDER= # chroma | qdrant (default: chroma; qdrant not yet implemented)
 CHROMA_PERSIST_DIR=    # Path for ChromaDB persistence (default: ./data/chroma)
 SQLITE_DB_PATH=        # Path for trace index (default: ./data/traces.db)
