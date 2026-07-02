@@ -27,8 +27,8 @@ class TestEmbedder:
         assert result == []
 
     def test_embed_batches_large_input(self, settings):
-        from src.retrieval.providers.embedder_openai import BATCH_SIZE
         from src.retrieval.embedder import Embedder
+        from src.retrieval.providers.embedder_openai import BATCH_SIZE
 
         texts = ["text"] * (BATCH_SIZE + 1)
 

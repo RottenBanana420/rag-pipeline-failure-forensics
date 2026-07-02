@@ -50,13 +50,17 @@ def make_embedder(settings: Settings) -> EmbedderProtocol:
     provider = settings.embedding_provider
 
     if provider == "openai":
-        from src.retrieval.providers.embedder_openai import OpenAIEmbedder as _OpenAIEmbedder
+        from src.retrieval.providers.embedder_openai import (
+            OpenAIEmbedder as _OpenAIEmbedder,
+        )
 
         return _OpenAIEmbedder(settings)
 
     if provider == "sentence_transformers":
         from src.retrieval.providers.embedder_sentence_transformers import (
             DEFAULT_MODEL as _ST_DEFAULT_MODEL,
+        )
+        from src.retrieval.providers.embedder_sentence_transformers import (
             SentenceTransformersEmbedder as _STEmbedder,
         )
 

@@ -5,6 +5,7 @@ Uses mocking to avoid downloading the model in CI.
 
 from unittest.mock import MagicMock, patch
 
+
 def _make_mock_st_model(dim: int = 384) -> MagicMock:
     """Return a mock SentenceTransformer instance."""
     mock_model = MagicMock()
@@ -140,11 +141,11 @@ class TestSentenceTransformersEmbedder:
         assert result == []
 
     def test_embed_calls_encode(self):
+        import numpy as np
+
         from src.retrieval.providers.embedder_sentence_transformers import (
             SentenceTransformersEmbedder,
         )
-
-        import numpy as np
 
         dim = 384
         mock_model = _make_mock_st_model(dim)

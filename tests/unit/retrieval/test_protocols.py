@@ -1,12 +1,9 @@
 """Tests for EmbedderProtocol and VectorStoreProtocol runtime_checkable protocols."""
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from src.ingestion import Chunk
 from src.retrieval.models import VectorStoreHit
-
 
 # ---------------------------------------------------------------------------
 # EmbedderProtocol tests

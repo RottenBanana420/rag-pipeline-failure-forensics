@@ -132,7 +132,6 @@ class TestOpenAIEmbedder:
 
     def test_openai_imported_lazily(self):
         """OpenAI should not be imported at module top-level in the provider file."""
-        import importlib
         import sys
 
         # Remove openai from sys.modules to test lazy import

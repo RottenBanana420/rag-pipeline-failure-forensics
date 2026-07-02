@@ -15,7 +15,9 @@ class SentenceTransformersEmbedder:
     """Embedding provider backed by the ``sentence-transformers`` library."""
 
     def __init__(self, model_name: str = DEFAULT_MODEL) -> None:
-        from sentence_transformers import SentenceTransformer  # lazy import — not at module level
+        from sentence_transformers import (
+            SentenceTransformer,  # lazy import — not at module level
+        )
 
         self._model_name = model_name
         self._model = SentenceTransformer(model_name)
