@@ -11,11 +11,13 @@ class TestIndexerIndex:
         chunks = [make_chunk(0), make_chunk(1), make_chunk(2)]
         embedder = MagicMock(spec=Embedder)
         embedder.embed.return_value = [[float(i)] * 3 for i in range(3)]
+        embedder.provider_id = "test/fake-embedder"
+        embedder.dimensions = 3
 
         stored = Indexer(
             settings,
             embedder=embedder,
-            vector_store=VectorStore(settings),
+            vector_store=VectorStore(settings, embedder),
             bm25_store=BM25Store(settings),
         ).index(chunks)
 
@@ -29,8 +31,10 @@ class TestIndexerIndex:
 
         embedder = MagicMock(spec=Embedder)
         embedder.embed.return_value = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+        embedder.provider_id = "test/fake-embedder"
+        embedder.dimensions = 3
 
-        vector_store = VectorStore(settings)
+        vector_store = VectorStore(settings, embedder)
         bm25_store = BM25Store(settings)
 
         Indexer(
@@ -51,8 +55,10 @@ class TestIndexerIndex:
 
         embedder = MagicMock(spec=Embedder)
         embedder.embed.return_value = [[1.0, 0.0, 0.0]]
+        embedder.provider_id = "test/fake-embedder"
+        embedder.dimensions = 3
 
-        vector_store = VectorStore(settings)
+        vector_store = VectorStore(settings, embedder)
         bm25_store = BM25Store(settings)
         indexer = Indexer(
             settings,
@@ -92,11 +98,13 @@ class TestIndexerIndex:
 
         embedder = MagicMock(spec=Embedder)
         embedder.embed.return_value = [[1.0, 0.0, 0.0]]
+        embedder.provider_id = "test/fake-embedder"
+        embedder.dimensions = 3
 
         Indexer(
             settings,
             embedder=embedder,
-            vector_store=VectorStore(settings),
+            vector_store=VectorStore(settings, embedder),
             bm25_store=BM25Store(settings),
         ).index([make_chunk(0, text="python search engine")])
 

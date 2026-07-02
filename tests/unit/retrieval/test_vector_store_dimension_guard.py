@@ -38,13 +38,12 @@ class TestDimensionGuardNewCollection:
         assert meta["embedding_provider"] == "openai/text-embedding-3-small"
         assert meta["embedding_dimensions"] == 1536
 
-    def test_new_collection_without_embedder_skips_guard(self, settings):
-        """When no embedder is provided, guard is skipped and no error is raised."""
+    def test_embedder_is_required(self, settings):
+        """Constructing without an embedder must fail, not silently skip the guard."""
         from src.retrieval.vector_store import ChromaVectorStore
 
-        # Should not raise — backward-compatible path
-        vs = ChromaVectorStore(settings)
-        assert vs is not None
+        with pytest.raises(TypeError):
+            ChromaVectorStore(settings)  # type: ignore[call-arg]
 
 
 class TestDimensionGuardExistingCollection:

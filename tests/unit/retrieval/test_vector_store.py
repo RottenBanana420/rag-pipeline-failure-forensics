@@ -1,8 +1,8 @@
 class TestVectorStoreUpsert:
-    def test_upsert_stores_chunks_and_returns_ids(self, settings, make_chunk):
+    def test_upsert_stores_chunks_and_returns_ids(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         chunks = [make_chunk(0), make_chunk(1)]
         embeddings = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
 
@@ -11,17 +11,17 @@ class TestVectorStoreUpsert:
         assert stored == ["chunk-000", "chunk-001"]
         assert vs.count() == 2
 
-    def test_upsert_empty_list_returns_empty(self, settings):
+    def test_upsert_empty_list_returns_empty(self, settings, embedder):
         from src.retrieval.vector_store import VectorStore
 
-        assert VectorStore(settings).upsert([], []) == []
+        assert VectorStore(settings, embedder).upsert([], []) == []
 
-    def test_upsert_stores_expected_metadata(self, settings, make_chunk):
+    def test_upsert_stores_expected_metadata(self, settings, embedder, make_chunk):
         import chromadb
 
         from src.retrieval.vector_store import COLLECTION_NAME, VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         vs.upsert([make_chunk(0, text="hello world")], [[1.0, 0.0, 0.0]])
 
         col = chromadb.PersistentClient(
@@ -39,10 +39,10 @@ class TestVectorStoreUpsert:
         assert meta["doc_id"] == "doc-000"
         assert meta["title"] == "Doc 0"
 
-    def test_upsert_is_idempotent(self, settings, make_chunk):
+    def test_upsert_is_idempotent(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         chunk = make_chunk(0)
         vs.upsert([chunk], [[1.0, 0.0, 0.0]])
         vs.upsert([chunk], [[1.0, 0.0, 0.0]])
@@ -51,10 +51,10 @@ class TestVectorStoreUpsert:
 
 
 class TestVectorStoreFilterDuplicates:
-    def test_all_accepted_when_collection_empty(self, settings, make_chunk):
+    def test_all_accepted_when_collection_empty(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         chunks = [make_chunk(0), make_chunk(1)]
         embeddings = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
 
@@ -63,33 +63,33 @@ class TestVectorStoreFilterDuplicates:
         assert accepted_chunks == chunks
         assert accepted_embeddings == embeddings
 
-    def test_near_duplicate_excluded(self, settings, make_chunk):
+    def test_near_duplicate_excluded(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         vs.upsert([make_chunk(0)], [[1.0, 0.0, 0.0]])
 
         accepted, _ = vs.filter_duplicates([make_chunk(1)], [[1.0, 0.0, 0.0]])
 
         assert accepted == []
 
-    def test_dissimilar_chunk_accepted(self, settings, make_chunk):
+    def test_dissimilar_chunk_accepted(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         vs.upsert([make_chunk(0)], [[1.0, 0.0, 0.0]])
 
         accepted, _ = vs.filter_duplicates([make_chunk(1)], [[0.0, 1.0, 0.0]])
 
         assert accepted == [make_chunk(1)]
 
-    def test_duplicate_flagged_in_logs(self, settings, make_chunk, caplog):
+    def test_duplicate_flagged_in_logs(self, settings, embedder, make_chunk, caplog):
         import logging
         from unittest.mock import patch
 
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         vs.upsert([make_chunk(0)], [[1.0, 0.0, 0.0]])
 
         # Patch query to return distance 0.0 (similarity 1.0 → duplicate)
@@ -102,10 +102,10 @@ class TestVectorStoreFilterDuplicates:
 
 
 class TestVectorStoreQuery:
-    def test_query_returns_hits_sorted_by_similarity(self, settings, make_chunk):
+    def test_query_returns_hits_sorted_by_similarity(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         chunks = [
             make_chunk(0, text="alpha"),
             make_chunk(1, text="beta"),
@@ -119,26 +119,26 @@ class TestVectorStoreQuery:
         assert hits[0].chunk_id == "chunk-000"
         assert hits[0].similarity > hits[1].similarity >= hits[2].similarity
 
-    def test_query_empty_collection_returns_empty(self, settings):
+    def test_query_empty_collection_returns_empty(self, settings, embedder):
         from src.retrieval.vector_store import VectorStore
 
-        hits = VectorStore(settings).query([1.0, 0.0, 0.0], k=10)
+        hits = VectorStore(settings, embedder).query([1.0, 0.0, 0.0], k=10)
         assert hits == []
 
-    def test_query_k_exceeds_count_returns_all(self, settings, make_chunk):
+    def test_query_k_exceeds_count_returns_all(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         vs.upsert([make_chunk(0)], [[1.0, 0.0, 0.0]])
 
         hits = vs.query([1.0, 0.0, 0.0], k=10)
 
         assert len(hits) == 1
 
-    def test_query_limits_results_to_k(self, settings, make_chunk):
+    def test_query_limits_results_to_k(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         chunks = [make_chunk(i) for i in range(5)]
         embeddings = [
             [1.0, 0.0, 0.0],
@@ -153,10 +153,10 @@ class TestVectorStoreQuery:
 
         assert len(hits) == 3
 
-    def test_query_hit_fields_populated(self, settings, make_chunk):
+    def test_query_hit_fields_populated(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         chunk = make_chunk(0, text="hello world")
         vs.upsert([chunk], [[1.0, 0.0, 0.0]])
 
@@ -174,15 +174,15 @@ class TestVectorStoreQuery:
 
 
 class TestVectorStoreGetByIds:
-    def test_get_by_ids_empty_list_returns_empty(self, settings):
+    def test_get_by_ids_empty_list_returns_empty(self, settings, embedder):
         from src.retrieval.vector_store import VectorStore
 
-        assert VectorStore(settings).get_by_ids([]) == []
+        assert VectorStore(settings, embedder).get_by_ids([]) == []
 
-    def test_get_by_ids_returns_hit_with_correct_fields(self, settings, make_chunk):
+    def test_get_by_ids_returns_hit_with_correct_fields(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         chunk = make_chunk(0, text="hello world")
         vs.upsert([chunk], [[1.0, 0.0, 0.0]])
 
@@ -199,20 +199,20 @@ class TestVectorStoreGetByIds:
         assert hit.chunk_index == 0
         assert hit.strategy == "fixed_size"
 
-    def test_get_by_ids_similarity_is_zero_sentinel(self, settings, make_chunk):
+    def test_get_by_ids_similarity_is_zero_sentinel(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         vs.upsert([make_chunk(0)], [[1.0, 0.0, 0.0]])
 
         hit = vs.get_by_ids(["chunk-000"])[0]
 
         assert hit.similarity == 0.0
 
-    def test_get_by_ids_multiple_ids(self, settings, make_chunk):
+    def test_get_by_ids_multiple_ids(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         chunks = [make_chunk(0, text="alpha"), make_chunk(1, text="beta")]
         vs.upsert(chunks, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
@@ -221,10 +221,10 @@ class TestVectorStoreGetByIds:
         chunk_ids = {h.chunk_id for h in hits}
         assert chunk_ids == {"chunk-000", "chunk-001"}
 
-    def test_get_by_ids_missing_id_omitted(self, settings, make_chunk):
+    def test_get_by_ids_missing_id_omitted(self, settings, embedder, make_chunk):
         from src.retrieval.vector_store import VectorStore
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         vs.upsert([make_chunk(0)], [[1.0, 0.0, 0.0]])
 
         hits = vs.get_by_ids(["chunk-000", "chunk-999"])

@@ -129,10 +129,10 @@ class TestVectorStoreProtocol:
 
         assert isinstance(MinimalVectorStore(), VectorStoreProtocol)  # type: ignore[arg-type]
 
-    def test_concrete_vector_store_satisfies_protocol(self, settings):
+    def test_concrete_vector_store_satisfies_protocol(self, settings, embedder):
         from src.retrieval.vector_store import VectorStore, VectorStoreProtocol
 
-        vs = VectorStore(settings)
+        vs = VectorStore(settings, embedder)
         assert isinstance(vs, VectorStoreProtocol)  # type: ignore[arg-type]
 
     def test_protocol_has_filter_duplicates(self):

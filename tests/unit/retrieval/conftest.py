@@ -1,6 +1,18 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 from src.ingestion import Chunk
+from src.retrieval.embedder import EmbedderProtocol
+
+
+@pytest.fixture
+def embedder() -> EmbedderProtocol:
+    mock = MagicMock(spec=EmbedderProtocol)
+    mock.provider_id = "test/fake-embedder"
+    mock.dimensions = 3
+    mock.embed.return_value = []
+    return mock  # type: ignore[return-value]
 
 
 @pytest.fixture

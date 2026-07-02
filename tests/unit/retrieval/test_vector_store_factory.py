@@ -100,7 +100,7 @@ class TestMakeVectorStore:
 
         assert isinstance(result, VectorStoreProtocol)
 
-    def test_vector_store_alias_still_works(self, tmp_path, monkeypatch):
+    def test_vector_store_alias_still_works(self, tmp_path, monkeypatch, mock_embedder):
         """VectorStore backward-compat alias still resolves to ChromaVectorStore."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
@@ -111,5 +111,5 @@ class TestMakeVectorStore:
         assert VectorStore is ChromaVectorStore
 
         s = Settings()
-        vs = VectorStore(s)
+        vs = VectorStore(s, mock_embedder)
         assert isinstance(vs, ChromaVectorStore)

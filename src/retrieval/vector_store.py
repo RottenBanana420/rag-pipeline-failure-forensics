@@ -61,7 +61,7 @@ class ChromaVectorStore:
     def __init__(
         self,
         settings: Settings,
-        embedder: EmbedderProtocol | None = None,
+        embedder: EmbedderProtocol,
     ) -> None:
         self._threshold = settings.dedup_threshold
         client = chromadb.PersistentClient(path=settings.chroma_persist_dir_str)
@@ -69,7 +69,7 @@ class ChromaVectorStore:
         existing_names = [c.name for c in client.list_collections()]
         is_new = COLLECTION_NAME not in existing_names
 
-        if is_new and embedder is not None:
+        if is_new:
             self._collection = client.get_or_create_collection(
                 COLLECTION_NAME,
                 metadata={
@@ -78,22 +78,21 @@ class ChromaVectorStore:
                 },
                 configuration={"hnsw": {"space": "cosine"}},
             )
-        else:
-            self._collection = client.get_or_create_collection(
-                COLLECTION_NAME,
-                configuration={"hnsw": {"space": "cosine"}},
-            )
+            return
 
-        if not is_new and embedder is not None:
-            stored_meta = self._collection.metadata or {}
-            stored_provider = stored_meta.get("embedding_provider")
-            stored_dims = stored_meta.get("embedding_dimensions")
-            if stored_provider is not None and stored_provider != embedder.provider_id:
-                raise ValueError(
-                    f"Collection was indexed with '{stored_provider}' ({stored_dims} dims). "
-                    f"Current config is '{embedder.provider_id}' ({embedder.dimensions} dims). "
-                    "Delete 'data/chroma/' and re-index to switch providers."
-                )
+        self._collection = client.get_or_create_collection(
+            COLLECTION_NAME,
+            configuration={"hnsw": {"space": "cosine"}},
+        )
+        stored_meta = self._collection.metadata or {}
+        stored_provider = stored_meta.get("embedding_provider")
+        stored_dims = stored_meta.get("embedding_dimensions")
+        if stored_provider is not None and stored_provider != embedder.provider_id:
+            raise ValueError(
+                f"Collection was indexed with '{stored_provider}' ({stored_dims} dims). "
+                f"Current config is '{embedder.provider_id}' ({embedder.dimensions} dims). "
+                "Delete 'data/chroma/' and re-index to switch providers."
+            )
 
     def filter_duplicates(
         self,
