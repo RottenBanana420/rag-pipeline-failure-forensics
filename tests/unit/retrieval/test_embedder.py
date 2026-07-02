@@ -11,7 +11,7 @@ class TestEmbedder:
     def test_embed_returns_vector_per_text(self, settings):
         from src.retrieval.embedder import Embedder
 
-        with patch("src.retrieval.embedder.OpenAI") as MockOpenAI:
+        with patch("openai.OpenAI") as MockOpenAI:
             MockOpenAI.return_value.embeddings.create.return_value = _mock_response(3)
             result = Embedder(settings).embed(["a", "b", "c"])
 
@@ -21,17 +21,18 @@ class TestEmbedder:
     def test_embed_empty_input_returns_empty(self, settings):
         from src.retrieval.embedder import Embedder
 
-        with patch("src.retrieval.embedder.OpenAI"):
+        with patch("openai.OpenAI"):
             result = Embedder(settings).embed([])
 
         assert result == []
 
     def test_embed_batches_large_input(self, settings):
-        from src.retrieval.embedder import BATCH_SIZE, Embedder
+        from src.retrieval.embedder import Embedder
+        from src.retrieval.providers.embedder_openai import BATCH_SIZE
 
         texts = ["text"] * (BATCH_SIZE + 1)
 
-        with patch("src.retrieval.embedder.OpenAI") as MockOpenAI:
+        with patch("openai.OpenAI") as MockOpenAI:
             mock_create = MockOpenAI.return_value.embeddings.create
             mock_create.side_effect = [_mock_response(BATCH_SIZE), _mock_response(1)]
             result = Embedder(settings).embed(texts)
@@ -42,7 +43,7 @@ class TestEmbedder:
     def test_embed_passes_model_from_settings(self, settings):
         from src.retrieval.embedder import Embedder
 
-        with patch("src.retrieval.embedder.OpenAI") as MockOpenAI:
+        with patch("openai.OpenAI") as MockOpenAI:
             mock_create = MockOpenAI.return_value.embeddings.create
             mock_create.return_value = _mock_response(1)
             Embedder(settings).embed(["hello"])

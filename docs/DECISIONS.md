@@ -95,3 +95,19 @@
 **Zero-score guard in `SparseRetriever`** — After sorting, chunks with `score == 0.0` are dropped before normalization. A zero-score chunk means BM25 found no query term overlap — including it would produce `0 / max_score = 0` similarity entries that pollute fusion results. The guard also prevents division-by-zero when all scores are zero (empty index or no term overlap).
 
 **`VectorStoreHit` as the shared result model** — Both `DenseRetriever` and `SparseRetriever` return `list[VectorStoreHit]`. Using a single frozen dataclass means the RRF fusion layer and reranker don't need to know which retriever produced a hit. `dataclasses.replace` in `SparseRetriever` swaps in the normalized BM25 score without mutating the ChromaDB-returned hit.
+
+---
+
+## 2026-06-30 — Embedding & Vector Store Provider Abstraction
+
+**`Protocol` + factory over inheritance** — `EmbedderProtocol` and `VectorStoreProtocol` are structural (`typing.Protocol`), not abstract base classes. Any object with the right method signatures satisfies the interface without inheriting from anything, which keeps provider modules free of coupling to a shared base class and lets `runtime_checkable` isinstance checks work in tests.
+
+**`sentence_transformers` as the default embedding provider, not `openai`** — Running the pipeline out of the box (`cp .env.example .env && pytest`) should not require an API key. `text-embedding-3-small` (OpenAI, 1536 dims) remains available for production use, but `all-MiniLM-L6-v2` (sentence-transformers, 384 dims, already a base dependency) is what a fresh clone uses by default.
+
+**Collection metadata as the dimension guard, not a config-only check** — Embedding dimensions differ by provider and are fixed on a ChromaDB collection after the first insert. Rather than trust the running config alone, `ChromaVectorStore` writes `embedding_provider`/`embedding_dimensions` into the collection metadata on first creation and compares against it on every later open, raising a clear `ValueError` naming both the stored and configured provider if they diverge. This turns a silent dimension-mismatch corruption into a startup-time error.
+
+**Lazy provider SDK imports inside factory branches, not at module level** — `make_embedder` imports `src.retrieval.providers.embedder_openai` or `embedder_sentence_transformers` only inside the matching `if provider == ...` branch. This means `pip install -e ".[dev]"` (no provider extras) doesn't fail at import time just because `openai` isn't installed, and installing `embed-openai` doesn't force `sentence-transformers` model downloads for users who never select that provider.
+
+**`Embedder`/`VectorStore` kept as backward-compatible aliases via module `__getattr__`** — Existing call sites (and pre-refactor tests) that import the old concrete class names keep working. `__getattr__` resolves them lazily to `OpenAIEmbedder`/`ChromaVectorStore` on first access instead of importing provider SDKs eagerly at module load.
+
+**Model-name guard in `make_embedder`** — If `settings.embedding_provider == "sentence_transformers"` but `settings.embedding_model` still holds an OpenAI-style name (prefix `text-embedding`, the field's own default), the factory substitutes the sentence-transformers default model instead of attempting to load an OpenAI model name locally. Prevents a confusing `sentence-transformers` load error when a user changes only `EMBEDDING_PROVIDER` and forgets `EMBEDDING_MODEL`.

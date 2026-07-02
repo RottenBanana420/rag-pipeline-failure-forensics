@@ -1,12 +1,12 @@
-from src.retrieval.embedder import Embedder
+from src.retrieval.embedder import EmbedderProtocol
 from src.retrieval.models import VectorStoreHit
-from src.retrieval.vector_store import VectorStore
+from src.retrieval.vector_store import VectorStoreProtocol
 
 _DEFAULT_K = 10
 
 
 class DenseRetriever:
-    def __init__(self, embedder: Embedder, vector_store: VectorStore) -> None:
+    def __init__(self, embedder: EmbedderProtocol, vector_store: VectorStoreProtocol) -> None:
         self._embedder = embedder
         self._vector_store = vector_store
 

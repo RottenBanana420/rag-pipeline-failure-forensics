@@ -1,24 +1,99 @@
+"""Vector store module — protocol, ChromaVectorStore implementation, and factory.
+
+``VectorStoreProtocol`` defines the structural interface every vector store must satisfy.
+``ChromaVectorStore`` is the ChromaDB-backed implementation.
+``make_vector_store`` is a factory that reads ``settings.vector_store_provider`` and
+returns the appropriate provider instance.
+``VectorStore`` is kept as a backward-compatibility alias via module-level ``__getattr__``.
+"""
+
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import chromadb
 
-from src.config import Settings
 from src.ingestion import Chunk
+from src.retrieval.embedder import EmbedderProtocol
 from src.retrieval.models import VectorStoreHit
+
+if TYPE_CHECKING:
+    from src.config import Settings
 
 COLLECTION_NAME = "rag_chunks"
 
 logger = logging.getLogger(__name__)
 
 
-class VectorStore:
-    def __init__(self, settings: Settings) -> None:
+@runtime_checkable
+class VectorStoreProtocol(Protocol):
+    """Structural interface that every vector store provider must satisfy."""
+
+    def filter_duplicates(
+        self,
+        chunks: list[Chunk],
+        embeddings: list[list[float]],
+    ) -> tuple[list[Chunk], list[list[float]]]:
+        """Return only chunks that are not near-duplicates of stored content."""
+        ...
+
+    def upsert(
+        self, chunks: list[Chunk], embeddings: list[list[float]]
+    ) -> list[str]:
+        """Insert or update chunks and their embeddings; return the stored IDs."""
+        ...
+
+    def query(self, embedding: list[float], k: int = 10) -> list[VectorStoreHit]:
+        """Return the *k* nearest neighbours for a query embedding."""
+        ...
+
+    def get_by_ids(self, ids: list[str]) -> list[VectorStoreHit]:
+        """Fetch specific chunks by their IDs."""
+        ...
+
+    def count(self) -> int:
+        """Return the total number of stored chunks."""
+        ...
+
+
+class ChromaVectorStore:
+    def __init__(
+        self,
+        settings: Settings,
+        embedder: EmbedderProtocol | None = None,
+    ) -> None:
         self._threshold = settings.dedup_threshold
         client = chromadb.PersistentClient(path=settings.chroma_persist_dir_str)
-        self._collection = client.get_or_create_collection(
-            COLLECTION_NAME,
-            configuration={"hnsw": {"space": "cosine"}},
-        )
+
+        existing_names = [c.name for c in client.list_collections()]
+        is_new = COLLECTION_NAME not in existing_names
+
+        if is_new and embedder is not None:
+            self._collection = client.get_or_create_collection(
+                COLLECTION_NAME,
+                metadata={
+                    "embedding_provider": embedder.provider_id,
+                    "embedding_dimensions": embedder.dimensions,
+                },
+                configuration={"hnsw": {"space": "cosine"}},
+            )
+        else:
+            self._collection = client.get_or_create_collection(
+                COLLECTION_NAME,
+                configuration={"hnsw": {"space": "cosine"}},
+            )
+
+        if not is_new and embedder is not None:
+            stored_meta = self._collection.metadata or {}
+            stored_provider = stored_meta.get("embedding_provider")
+            stored_dims = stored_meta.get("embedding_dimensions")
+            if stored_provider is not None and stored_provider != embedder.provider_id:
+                raise ValueError(
+                    f"Collection was indexed with '{stored_provider}' ({stored_dims} dims). "
+                    f"Current config is '{embedder.provider_id}' ({embedder.dimensions} dims). "
+                    "Delete 'data/chroma/' and re-index to switch providers."
+                )
 
     def filter_duplicates(
         self,
@@ -140,3 +215,44 @@ class VectorStore:
 
     def count(self) -> int:
         return self._collection.count()
+
+
+def make_vector_store(
+    settings: Settings, embedder: EmbedderProtocol
+) -> VectorStoreProtocol:
+    """Return a vector store instance for the provider specified in *settings*.
+
+    Args:
+        settings: Application settings containing the provider choice and config.
+        embedder: The embedder to use for dimension validation and provider
+            mismatch detection on existing collections.
+
+    Raises:
+        NotImplementedError: If ``settings.vector_store_provider`` is ``"qdrant"``
+            (not yet implemented).
+        ValueError: If ``settings.vector_store_provider`` is not a recognised value.
+    """
+    provider = settings.vector_store_provider
+
+    if provider == "chroma":
+        return ChromaVectorStore(settings, embedder=embedder)
+
+    if provider == "qdrant":
+        raise NotImplementedError("qdrant vector store is not yet implemented")
+
+    valid = "chroma, qdrant"
+    raise ValueError(
+        f"Unknown vector store provider: {provider!r}. Valid providers are: {valid}"
+    )
+
+
+def __getattr__(name: str) -> object:
+    """Lazy loader for backward-compatibility aliases.
+
+    Provides ``VectorStore`` as an alias for ``ChromaVectorStore`` without
+    polluting the module namespace at import time.
+    """
+    if name == "VectorStore":
+        globals()["VectorStore"] = ChromaVectorStore
+        return ChromaVectorStore
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

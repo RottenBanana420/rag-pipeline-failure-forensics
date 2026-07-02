@@ -29,8 +29,12 @@ class Settings(BaseSettings):
 
     # Embedding
     embedding_model: str = Field(default="text-embedding-3-small")
+    embedding_provider: Literal["openai", "sentence_transformers", "voyage", "gemini", "cohere"] = Field(
+        default="sentence_transformers"
+    )
 
     # Vector store
+    vector_store_provider: Literal["chroma", "qdrant"] = Field(default="chroma")
     chroma_persist_dir: Path = Field(default=Path("./data/chroma"))
 
     # Retrieval

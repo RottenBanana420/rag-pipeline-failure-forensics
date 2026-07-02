@@ -1,5 +1,44 @@
 # Architecture Overview
 
+## 2026-06-30 — Phase 1: Embedding & Vector Store Provider Abstraction (Complete)
+
+### Provider Abstraction
+
+`Embedder` and `VectorStore` were refactored from concrete OpenAI/ChromaDB classes into `Protocol`-based interfaces with factory functions, so switching providers is an environment variable change, not a code change.
+
+**`EmbedderProtocol`** (`src/retrieval/embedder.py`): `embed(texts) -> list[list[float]]`, `dimensions: int`, `provider_id: str`. `make_embedder(settings)` reads `settings.embedding_provider` and returns the matching implementation, importing each provider SDK lazily inside the factory branch so installing one provider's optional extra doesn't pull in the others.
+
+**`VectorStoreProtocol`** (`src/retrieval/vector_store.py`): `filter_duplicates`, `upsert`, `query`, `get_by_ids`, `count`. `make_vector_store(settings, embedder)` returns the configured implementation.
+
+**Implemented providers:**
+
+| Provider | Class | File | Requires |
+|---|---|---|---|
+| `sentence_transformers` (default) | `SentenceTransformersEmbedder` | `src/retrieval/providers/embedder_sentence_transformers.py` | Nothing — already a base dependency |
+| `openai` | `OpenAIEmbedder` | `src/retrieval/providers/embedder_openai.py` | `OPENAI_API_KEY`, `pip install -e ".[embed-openai]"` |
+| `chroma` (default vector store) | `ChromaVectorStore` | `src/retrieval/vector_store.py` | Nothing — already a base dependency |
+
+`voyage`, `gemini`, `cohere` embedding providers and the `qdrant` vector store are declared in `Settings`'s `Literal` types and `pyproject.toml` optional extras but not yet implemented; selecting them raises `NotImplementedError`/`ValueError` from the factory.
+
+**Dimension guard:** Embedding dimensions vary by provider (e.g. OpenAI `text-embedding-3-small` = 1536, `all-MiniLM-L6-v2` = 384). `ChromaVectorStore` stamps `embedding_provider` and `embedding_dimensions` into the collection's metadata the first time it's created. On every later open, if an `embedder` is passed and its `provider_id` doesn't match the stored metadata, construction raises `ValueError` with a message telling the user to delete `data/chroma/` and re-index — this prevents silently querying a collection with vectors from a different embedding space.
+
+**`embedder_openai.py` model-name guard:** `make_embedder` won't blindly pass `settings.embedding_model` to `SentenceTransformersEmbedder` — if the configured model name starts with `text-embedding` (an OpenAI-style name) and the provider is `sentence_transformers`, it falls back to `SentenceTransformersEmbedder`'s own default (`all-MiniLM-L6-v2`) instead of trying to load an OpenAI model name as a local model, which would fail confusingly.
+
+**Backward-compatible aliases:** `Embedder` and `VectorStore` remain importable (as aliases for `OpenAIEmbedder`/`ChromaVectorStore` respectively) via module-level `__getattr__`, so existing call sites and tests that import the old names keep working without eagerly importing every provider SDK at module load time.
+
+**Public API:**
+
+```python
+from src.config import settings
+from src.retrieval.embedder import make_embedder
+from src.retrieval.vector_store import make_vector_store
+
+embedder = make_embedder(settings)          # provider chosen by settings.embedding_provider
+vector_store = make_vector_store(settings, embedder)  # provider chosen by settings.vector_store_provider
+```
+
+---
+
 ## 2026-06-30 — Phase 1: RRF Fusion + HybridRetriever (Complete)
 
 ### Fusion Layer
@@ -22,13 +61,16 @@
 **Public API:**
 
 ```python
-from src.retrieval import HybridRetriever, DenseRetriever, SparseRetriever
-from src.retrieval import Embedder, VectorStore, BM25Store
+from src.retrieval import HybridRetriever, DenseRetriever, SparseRetriever, BM25Store
+from src.retrieval.embedder import make_embedder
+from src.retrieval.vector_store import make_vector_store
 from src.config import Settings
 
 settings = Settings()
-dense = DenseRetriever(Embedder(settings), VectorStore(settings))
-sparse = SparseRetriever(BM25Store(settings), VectorStore(settings))
+embedder = make_embedder(settings)
+vector_store = make_vector_store(settings, embedder)
+dense = DenseRetriever(embedder, vector_store)
+sparse = SparseRetriever(BM25Store(settings), vector_store)
 
 retriever = HybridRetriever(dense, sparse, settings)
 hits = retriever.retrieve("how do I configure chunking?")  # list[VectorStoreHit], len ≤ rerank_top_n
@@ -76,12 +118,14 @@ Two retriever classes implement the query side of hybrid retrieval. Both return 
 **Public API:**
 
 ```python
-from src.retrieval import DenseRetriever, SparseRetriever, Embedder, VectorStore, BM25Store
+from src.retrieval import DenseRetriever, SparseRetriever, BM25Store
+from src.retrieval.embedder import make_embedder
+from src.retrieval.vector_store import make_vector_store
 from src.config import Settings
 
 settings = Settings()
-embedder = Embedder(settings)
-vector_store = VectorStore(settings)
+embedder = make_embedder(settings)
+vector_store = make_vector_store(settings, embedder)
 bm25_store = BM25Store(settings)
 
 dense = DenseRetriever(embedder, vector_store)
@@ -107,11 +151,11 @@ The retrieval module (`src/retrieval/`) handles embedding, vector storage, BM25 
 **Public API:**
 
 ```python
-from src.retrieval import Embedder, VectorStore, BM25Store, Indexer
+from src.retrieval import BM25Store, Indexer
 from src.config import Settings
 
 settings = Settings()
-indexer = Indexer(settings)          # loads existing BM25 index from disk on init
+indexer = Indexer(settings)          # builds its own embedder/vector store via the factories, loads existing BM25 index from disk on init
 
 # Full pipeline: embed → dedup → parallel upsert → save BM25
 stored_ids = indexer.index(chunks)   # chunks: list[Chunk] from src.ingestion
@@ -121,8 +165,11 @@ stored_ids = indexer.index(chunks)   # chunks: list[Chunk] from src.ingestion
 
 | Class | File | Responsibility |
 |-------|------|----------------|
-| `Embedder` | `embedder.py` | Batch OpenAI embeddings (`BATCH_SIZE = 200`) |
-| `VectorStore` | `vector_store.py` | ChromaDB persistent client, cosine-space collection `"rag_chunks"`, upsert + dedup |
+| `EmbedderProtocol` / `make_embedder` | `embedder.py` | Provider-agnostic embedding interface + factory (see provider abstraction entry above) |
+| `OpenAIEmbedder` | `providers/embedder_openai.py` | Batch OpenAI embeddings (`BATCH_SIZE = 200`) |
+| `SentenceTransformersEmbedder` | `providers/embedder_sentence_transformers.py` | Local embeddings via `sentence-transformers`, no API key |
+| `VectorStoreProtocol` / `make_vector_store` | `vector_store.py` | Provider-agnostic vector store interface + factory |
+| `ChromaVectorStore` | `vector_store.py` | ChromaDB persistent client, cosine-space collection `"rag_chunks"`, upsert + dedup + dimension guard |
 | `BM25Store` | `bm25_store.py` | BM25Okapi index, cumulative add, pickle persistence, scored retrieval |
 | `Indexer` | `indexer.py` | Orchestrator: embed → dedup → parallel upsert (ThreadPoolExecutor) → save BM25 |
 
@@ -204,7 +251,10 @@ src/
     chunker.py        # Chunker — three switchable chunking strategies
     loader.py         # DocumentLoader — dispatches by file extension
     storage.py        # save_processed / load_processed / list_raw_files
-  retrieval/          # Embedder, VectorStore, BM25Store, Indexer (complete)
+  retrieval/          # EmbedderProtocol/make_embedder, VectorStoreProtocol/make_vector_store,
+                      # BM25Store, Indexer (complete)
+                      # providers/        # embedder_openai.py, embedder_sentence_transformers.py
+                      #                   # (voyage/gemini/cohere planned)
                       # DenseRetriever, SparseRetriever, VectorStoreHit (complete)
                       # reciprocal_rank_fusion, HybridRetriever (complete)
                       # reranker [planned]
