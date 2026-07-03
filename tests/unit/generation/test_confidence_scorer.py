@@ -440,6 +440,37 @@ class TestScoreConfidence:
         expected = (1 / 3) * 0.6 + (1 / 3) * 1.0 + (1 / 3) * 0.0
         assert result.composite == pytest.approx(expected)
 
+    def test_composite_is_not_normalized_by_weight_sum(self):
+        """Weights need not sum to 1.0 — composite is a plain weighted sum,
+        not divided by the sum of weights. Weight sets that happen to sum
+        to 1.0 (as in the two tests above) can't distinguish this from an
+        accidentally-normalized implementation, so this test uses weights
+        summing to 3.0 instead.
+        """
+        hits = [make_hit(similarity=1.0)]
+        citation_results = [
+            CitationVerificationResult(
+                claim_text="c", chunk_indices=[1], supported=True, reasoning="r"
+            )
+        ]
+        judge = FakeCompletenessJudge(
+            verdicts={"q": CompletenessVerdict(complete=True, reasoning="ok")}
+        )
+
+        result = score_confidence(
+            "q",
+            "a",
+            hits,
+            citation_results,
+            judge,
+            retrieval_weight=1.0,
+            citation_weight=1.0,
+            completeness_weight=1.0,
+        )
+
+        # A normalized implementation would divide by 3.0 and return 1.0.
+        assert result.composite == pytest.approx(3.0)
+
     def test_is_frozen_dataclass(self):
         import dataclasses
 
