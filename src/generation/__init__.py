@@ -6,6 +6,7 @@ from src.generation.prompts import (
     INSUFFICIENT_CONTEXT_RESPONSE,
     GroundedPrompt,
     build_grounded_prompt,
+    wrap_with_nonce,
 )
 
 __all__ = [
@@ -13,4 +14,5 @@ __all__ = [
     "INSUFFICIENT_CONTEXT_RESPONSE",
     "GroundedPrompt",
     "build_grounded_prompt",
+    "wrap_with_nonce",
 ]

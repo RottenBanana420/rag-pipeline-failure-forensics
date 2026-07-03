@@ -63,6 +63,22 @@ class GroundedPrompt:
     user: str
 
 
+def wrap_with_nonce(tag: str, content: str, nonce: str | None = None) -> str:
+    """Wrap content in a nonce-suffixed boundary tag pair: <tag-{nonce}>...</tag-{nonce}>.
+
+    Each call generates a fresh random nonce so untrusted content can't forge
+    a matching closing tag and break out of its block (the "spotlighting"
+    defense against indirect prompt injection).
+
+    If `nonce` is provided, it will be used instead of generating a new one.
+    This allows multiple tags to share the same nonce (e.g., context and
+    question blocks in a prompt).
+    """
+    if nonce is None:
+        nonce = secrets.token_hex(_NONCE_BYTES)
+    return f"<{tag}-{nonce}>\n{content}\n</{tag}-{nonce}>"
+
+
 def format_context_blocks(hits: list[VectorStoreHit]) -> str:
     """Render hits as numbered context blocks, 1-indexed in list order.
 
@@ -91,8 +107,7 @@ def build_grounded_prompt(query: str, hits: list[VectorStoreHit]) -> GroundedPro
     can't forge a matching closing tag and break out of its block.
     """
     nonce = secrets.token_hex(_NONCE_BYTES)
-    user = (
-        f"<context-{nonce}>\n{format_context_blocks(hits)}\n</context-{nonce}>\n\n"
-        f"<question-{nonce}>\n{query}\n</question-{nonce}>"
-    )
+    context_block = wrap_with_nonce("context", format_context_blocks(hits), nonce=nonce)
+    question_block = wrap_with_nonce("question", query, nonce=nonce)
+    user = f"{context_block}\n\n{question_block}"
     return GroundedPrompt(system=GROUNDED_SYSTEM_PROMPT, user=user)
