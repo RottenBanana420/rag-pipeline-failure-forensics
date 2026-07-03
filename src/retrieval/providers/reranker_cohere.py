@@ -9,9 +9,12 @@ visible to the inline import.
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
-from src.config import Settings
 from src.retrieval.models import VectorStoreHit
+
+if TYPE_CHECKING:
+    from src.config import Settings
 
 # Cohere's newest and most performant foundational reranking model, superseding
 # rerank-v3.5 (released December 2025). See https://docs.cohere.com/changelog/rerank-v4.0

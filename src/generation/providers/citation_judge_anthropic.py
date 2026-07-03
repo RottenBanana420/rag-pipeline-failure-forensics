@@ -17,12 +17,16 @@ correct, current parameter for this non-beta call.
 
 from __future__ import annotations
 
-from src.config import Settings
+from typing import TYPE_CHECKING
+
 from src.generation.citation_verifier import (
     CITATION_JUDGE_SYSTEM_PROMPT,
     JudgeVerdict,
     build_judge_prompt,
 )
+
+if TYPE_CHECKING:
+    from src.config import Settings
 
 # Confirmed via Context7 against the installed anthropic SDK (v0.116.0)
 # model list (anthropic.types.model.Model) as a current, non-deprecated

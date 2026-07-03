@@ -138,6 +138,22 @@ class TestCohereReranker:
             top_n=2,
         )
 
+    def test_rerank_top_n_smaller_than_hits_caps_output_length(self, settings):
+        from src.retrieval.providers.reranker_cohere import CohereReranker
+
+        hits = [_hit("a"), _hit("b"), _hit("c"), _hit("d"), _hit("e")]
+        # API honors top_n and only returns the top 2 results.
+        mock_results = [_result(3, 0.9), _result(1, 0.7)]
+        with patch("cohere.ClientV2") as MockClient:
+            MockClient.return_value.v2.rerank.return_value = _mock_response(
+                mock_results
+            )
+            reranker = CohereReranker(settings)
+            result = reranker.rerank("q", hits, top_n=2)
+
+        assert len(result) == 2
+        assert [h.chunk_id for h in result] == ["d", "b"]
+
     def test_provider_id_includes_model_name(self, settings):
         from src.retrieval.providers.reranker_cohere import CohereReranker
 

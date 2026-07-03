@@ -7,30 +7,27 @@ visible to the inline import.
 
 Uses the stable (non-beta) ``client.chat.completions.parse(...,
 response_format=...)`` structured-output API. Confirmed via Context7 against
-the ``openai-python`` docs (v2.11.0 snapshot) and verified against the
-installed ``openai`` SDK (v2.44.0) source directly: ``.parse()`` accepts
-``model``, ``messages``, ``response_format`` and ``temperature``, and
-returns a ``ParsedChatCompletion`` whose ``choices[0].message`` carries both
+the ``openai-python`` docs and verified against the installed ``openai`` SDK
+(v2.44.0) source directly: ``.parse()`` accepts ``model``, ``messages``,
+``response_format`` and ``temperature``, and returns a
+``ParsedChatCompletion`` whose ``choices[0].message`` carries both
 ``parsed`` (the structured result, or ``None`` on refusal) and ``refusal``
-(the refusal string, if any) fields — this shape is unchanged from v2.11.0
-through the installed v2.44.0.
-
-Version-bisected directly against PyPI wheels: the stable
-``client.chat.completions.parse`` was only promoted out of
-``client.beta.chat.completions.parse`` in ``openai==1.92.0`` (1.91.0 still
-lacks it). The repo's previous ``embed-openai = ["openai>=1.30"]`` floor
-predates that by many releases, so ``pyproject.toml`` has been bumped to
-``openai>=1.92.0``.
+fields. Requires ``openai>=1.92.0`` — see ``docs/DECISIONS.md`` for why the
+version floor was bumped.
 """
 
 from __future__ import annotations
 
-from src.config import Settings
+from typing import TYPE_CHECKING
+
 from src.generation.citation_verifier import (
     CITATION_JUDGE_SYSTEM_PROMPT,
     JudgeVerdict,
     build_judge_prompt,
 )
+
+if TYPE_CHECKING:
+    from src.config import Settings
 
 # Confirmed via Context7 (openai-python docs, v2.11.0 snapshot) and cross-checked
 # against the installed openai SDK's ChatModel literal (v2.44.0): a current,

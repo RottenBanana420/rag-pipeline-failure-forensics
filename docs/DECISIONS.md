@@ -14,6 +14,8 @@
 
 **Nonce-tag wrapping (`wrap_with_nonce`) is shared between the grounded prompt and the judge prompt, not reimplemented** — Both prompts embed untrusted text (retrieved chunk content in the grounded prompt; claim and evidence text in the judge prompt, the latter also chunk-derived) that could contain an attempted prompt injection. Extracting the existing nonce-boundary logic from `build_grounded_prompt` into a standalone `wrap_with_nonce` helper means both call sites get the identical spotlighting defense with one implementation to audit, rather than two independently-written (and potentially divergent) copies.
 
+**`openai>=1.92.0` version floor, bumped from the embedding extra's inherited `openai>=1.30`** — `OpenAICitationJudge` relies on `client.chat.completions.parse(..., response_format=...)`, the stable (non-beta) structured-output API. Version-bisecting PyPI wheels showed this method was only promoted out of `client.beta.chat.completions.parse` into the stable namespace in `openai==1.92.0` (`1.91.0` still lacks it). The repo's prior floor of `1.30` — inherited from the `embed-openai` extra, which only needs the embeddings endpoint — predates that promotion by many releases, so it would have silently allowed installing a version where this provider's `judge()` raises `AttributeError` at runtime. `pyproject.toml` now pins `openai>=1.92.0` for this feature's extra.
+
 ---
 
 ## 2026-07-03 — Cohere & Voyage Reranker Providers

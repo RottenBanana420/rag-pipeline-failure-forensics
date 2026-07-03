@@ -109,7 +109,7 @@ src/
                       # rerankers, same lazy-import factory pattern
   generation/         # Grounded prompt (prompts.py), citation_parser.py (regex [N] extraction),
                       # citation_verifier.py (CitationJudgeProtocol + make_citation_judge factory
-                      # + verify_citations), confidence scorer
+                      # + verify_citations)
                       # providers/citation_judge_anthropic.py, providers/citation_judge_openai.py —
                       # LLM-as-judge citation verifiers, same lazy-import factory pattern
   tracing/            # Trace/Span models, context manager, decorator, JSON + SQLite writers

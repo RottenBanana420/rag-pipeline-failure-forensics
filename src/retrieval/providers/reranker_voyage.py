@@ -9,9 +9,12 @@ visible to the inline import.
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
-from src.config import Settings
 from src.retrieval.models import VectorStoreHit
+
+if TYPE_CHECKING:
+    from src.config import Settings
 
 # Voyage's recommended current-generation reranker model (the other recommended
 # option being the smaller/cheaper "rerank-2.5-lite"). See
