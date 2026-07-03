@@ -366,6 +366,140 @@ class TestCitationVerificationSettingsValidation:
         assert Settings().citation_judge_temperature == pytest.approx(1.0)
 
 
+class TestAnswerCompletenessSettingsDefaults:
+    def test_answer_completeness_judge_provider_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().answer_completeness_judge_provider == "anthropic"
+
+    def test_answer_completeness_judge_model_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().answer_completeness_judge_model == "claude-sonnet-4-5"
+
+    def test_answer_completeness_judge_temperature_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().answer_completeness_judge_temperature == pytest.approx(0.0)
+
+
+class TestAnswerCompletenessSettingsOverrides:
+    def test_answer_completeness_judge_provider_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ANSWER_COMPLETENESS_JUDGE_PROVIDER", "openai")
+        assert Settings().answer_completeness_judge_provider == "openai"
+
+    def test_answer_completeness_judge_model_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ANSWER_COMPLETENESS_JUDGE_MODEL", "gpt-4-turbo")
+        assert Settings().answer_completeness_judge_model == "gpt-4-turbo"
+
+    def test_answer_completeness_judge_temperature_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ANSWER_COMPLETENESS_JUDGE_TEMPERATURE", "0.5")
+        assert Settings().answer_completeness_judge_temperature == pytest.approx(0.5)
+
+
+class TestAnswerCompletenessSettingsValidation:
+    def test_answer_completeness_judge_provider_invalid_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("ANSWER_COMPLETENESS_JUDGE_PROVIDER", "gemini")
+        with pytest.raises(ValidationError, match="answer_completeness_judge_provider"):
+            Settings()
+
+    def test_answer_completeness_judge_temperature_below_zero_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("ANSWER_COMPLETENESS_JUDGE_TEMPERATURE", "-0.1")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_answer_completeness_judge_temperature_above_one_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("ANSWER_COMPLETENESS_JUDGE_TEMPERATURE", "1.5")
+        with pytest.raises(ValidationError):
+            Settings()
+
+
+class TestConfidenceScoringSettingsDefaults:
+    def test_confidence_retrieval_weight_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().confidence_retrieval_weight == pytest.approx(1 / 3)
+
+    def test_confidence_citation_weight_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().confidence_citation_weight == pytest.approx(1 / 3)
+
+    def test_confidence_completeness_weight_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().confidence_completeness_weight == pytest.approx(1 / 3)
+
+
+class TestConfidenceScoringSettingsOverrides:
+    def test_confidence_retrieval_weight_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("CONFIDENCE_RETRIEVAL_WEIGHT", "0.5")
+        assert Settings().confidence_retrieval_weight == pytest.approx(0.5)
+
+    def test_confidence_citation_weight_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("CONFIDENCE_CITATION_WEIGHT", "0.2")
+        assert Settings().confidence_citation_weight == pytest.approx(0.2)
+
+    def test_confidence_completeness_weight_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("CONFIDENCE_COMPLETENESS_WEIGHT", "0.3")
+        assert Settings().confidence_completeness_weight == pytest.approx(0.3)
+
+
+class TestConfidenceScoringSettingsValidation:
+    def test_confidence_retrieval_weight_negative_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("CONFIDENCE_RETRIEVAL_WEIGHT", "-0.1")
+        with pytest.raises(ValidationError):
+            Settings()
+
+
 class TestChunkingSettingsValidation:
     def test_invalid_chunk_strategy_rejected(
         self, clean_env: None, monkeypatch: pytest.MonkeyPatch

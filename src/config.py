@@ -71,6 +71,19 @@ class Settings(BaseSettings):
     citation_judge_model: str = Field(default="claude-sonnet-4-5")
     citation_judge_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
 
+    # Answer completeness judging (used by confidence scoring)
+    answer_completeness_judge_provider: Literal["anthropic", "openai"] = Field(
+        default="anthropic"
+    )
+    answer_completeness_judge_model: str = Field(default="claude-sonnet-4-5")
+    answer_completeness_judge_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    # Confidence scoring (composite of retrieval confidence, citation coverage,
+    # and answer completeness)
+    confidence_retrieval_weight: float = Field(default=1 / 3, ge=0.0)
+    confidence_citation_weight: float = Field(default=1 / 3, ge=0.0)
+    confidence_completeness_weight: float = Field(default=1 / 3, ge=0.0)
+
     # Data directories
     raw_data_dir: Path = Field(default=Path("./data/raw"))
     processed_data_dir: Path = Field(default=Path("./data/processed"))
