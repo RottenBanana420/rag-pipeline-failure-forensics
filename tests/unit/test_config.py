@@ -377,7 +377,9 @@ class TestAnswerCompletenessSettingsDefaults:
 
         assert Settings().answer_completeness_judge_model == "claude-sonnet-4-5"
 
-    def test_answer_completeness_judge_temperature_default(self, clean_env: None) -> None:
+    def test_answer_completeness_judge_temperature_default(
+        self, clean_env: None
+    ) -> None:
         from src.config import Settings
 
         assert Settings().answer_completeness_judge_temperature == pytest.approx(0.0)
