@@ -21,7 +21,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| 1 | Ingestion, Chunking, Hybrid Retrieval | In progress |
+| 1 | Ingestion, Chunking, Hybrid Retrieval | Done |
 | 2 | Generation with Citations | Planned |
 | 3 | Tracing & Instrumentation | Planned |
 | 4 | Backward Failure Analysis | Planned |
@@ -43,4 +43,4 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | Sparse retrieval (BM25, score-normalized) | Done |
 | RRF fusion (weighted, k=60) + HybridRetriever | Done |
 | Voyage / Gemini / Cohere embedding providers | Done |
-| Cross-encoder reranker (cuts to top 5) | Planned |
+| Cross-encoder reranker (cuts to top 5) | Done |

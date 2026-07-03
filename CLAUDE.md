@@ -14,6 +14,7 @@ Production-grade RAG (Retrieval-Augmented Generation) system with built-in obser
 | Embeddings | Pluggable via `EmbedderProtocol` — `sentence_transformers` (default, no API key), `openai` (`text-embedding-3-small`), `voyage` (`voyage-3.5`), `gemini` (`gemini-embedding-001`), or `cohere` (`embed-v4.0`); all API providers require their optional extra (`embed-openai`, `embed-voyage`, `embed-gemini`, `embed-cohere`) |
 | Vector Store | Pluggable via `VectorStoreProtocol` — ChromaDB (file-based, implemented) or Qdrant (containerized, planned) |
 | Sparse Search | `rank_bm25` |
+| Reranking | Pluggable via `RerankerProtocol` — `sentence_transformers` cross-encoder (default, `cross-encoder/ms-marco-MiniLM-L6-v2`); LLM-as-judge documented as a future provider |
 | LLM | GPT-4o or Claude Sonnet (via API) |
 | Chunking | LangChain text splitters |
 | Tracing | OpenTelemetry + custom spans |
@@ -101,7 +102,9 @@ src/
                       # DenseRetriever (cosine top-k), SparseRetriever (BM25 + score norm)
                       # VectorStoreHit (shared query result model)
                       # reciprocal_rank_fusion (RRF, k=60, weighted), HybridRetriever
-                      # Reranker: planned (cross-encoder, cuts RRF output to top 5)
+                      # RerankerProtocol + make_reranker factory, SentenceTransformersReranker
+                      # (providers/reranker_sentence_transformers.py) — cross-encoder second pass,
+                      # cuts RRF's candidate pool (20) down to the final top-n (5)
   generation/         # Grounded prompt, citation parser, citation verifier, confidence scorer
   tracing/            # Trace/Span models, context manager, decorator, JSON + SQLite writers
   analysis/           # Backward trace walker, failure categorizer, evidence chain builder
@@ -127,7 +130,9 @@ data/
 
 ### Key Design Decisions
 
-**Hybrid retrieval:** Dense (cosine similarity) + sparse (BM25) results are merged via Reciprocal Rank Fusion, then a cross-encoder reranker cuts to the top 5. Weights are configurable (default 0.7 dense / 0.3 sparse). See `docs/DECISIONS.md`.
+**Hybrid retrieval:** Dense (cosine similarity) + sparse (BM25) results are merged via Reciprocal Rank Fusion into a candidate pool, then a reranker cuts to the final top-n. Weights are configurable (default 0.7 dense / 0.3 sparse). See `docs/DECISIONS.md`.
+
+**Reranking:** RRF's cutoff (`rerank_candidate_pool`, default 20) and the final answer size (`rerank_top_n`, default 5) are separate settings — a `model_validator` enforces `rerank_top_n <= rerank_candidate_pool`. The reranker is an injected, optional dependency on `HybridRetriever` (mirrors `Indexer`'s optional `embedder`/`vector_store`/`bm25_store` args): if `reranking_enabled=False` or no reranker is passed in, `retrieve()` falls back to slicing the RRF candidate pool directly. Chosen via `make_reranker(settings)` against `RerankerProtocol`, same lazy-import factory pattern as `make_embedder`.
 
 **Chunking strategies:** Three switchable strategies — fixed-size with overlap (baseline), recursive character splitting on section headers (structure-aware), and semantic chunking on embedding similarity. Each chunk stores which strategy produced it.
 
@@ -155,18 +160,36 @@ If retrieval confidence is below threshold, the system returns a structured "I d
 ```
 OPENAI_API_KEY=        # Required only if EMBEDDING_PROVIDER=openai (or using GPT-4o for generation)
 ANTHROPIC_API_KEY=     # Required if using Claude Sonnet as LLM
+VOYAGE_API_KEY=        # Required only if EMBEDDING_PROVIDER=voyage
+GEMINI_API_KEY=        # Required only if EMBEDDING_PROVIDER=gemini
+COHERE_API_KEY=        # Required only if EMBEDDING_PROVIDER=cohere
 EMBEDDING_PROVIDER=    # openai | sentence_transformers | voyage | gemini | cohere (default: sentence_transformers)
 EMBEDDING_MODEL=       # Embedding model name (default: text-embedding-3-small; ignored by sentence_transformers unless set to a compatible model name)
 EMBEDDING_DEVICE=      # auto | cpu | cuda | mps (default: auto; only affects sentence_transformers — API providers have no local device). "auto" lets the library auto-detect CUDA/MPS/CPU; the resolved device is logged at startup.
 VECTOR_STORE_PROVIDER= # chroma | qdrant (default: chroma; qdrant not yet implemented)
 CHROMA_PERSIST_DIR=    # Path for ChromaDB persistence (default: ./data/chroma)
-SQLITE_DB_PATH=        # Path for trace index (default: ./data/traces.db)
-TRACE_OUTPUT_DIR=      # Path for JSON trace files (default: ./data/traces/)
+SQLITE_DB_PATH=        # Path for trace index (default: ./data/traces.db) — not active until Phase 3 (tracing) lands
+TRACE_OUTPUT_DIR=      # Path for JSON trace files (default: ./data/traces/) — not active until Phase 3 (tracing) lands
 LOG_LEVEL=             # DEBUG | INFO | WARNING (default: INFO)
+
+# Retrieval
+DENSE_TOP_K=           # Dense (cosine) candidates fetched before fusion (default: 10)
+SPARSE_TOP_K=          # Sparse (BM25) candidates fetched before fusion (default: 10)
+DENSE_WEIGHT=          # RRF weight for dense results (default: 0.7)
+SPARSE_WEIGHT=         # RRF weight for sparse results (default: 0.3)
+DEDUP_THRESHOLD=       # Cosine similarity above which an incoming chunk is skipped as a duplicate (default: 0.95)
 
 # Chunking
 CHUNK_STRATEGY=        # fixed_size | recursive_header | semantic (default: fixed_size)
 CHUNK_SIZE=            # Characters per chunk (default: 1000, min: 100)
 CHUNK_OVERLAP=         # Overlap between chunks (default: 200; must be < CHUNK_SIZE)
 SEMANTIC_BREAKPOINT_PERCENTILE=  # Distance percentile threshold for semantic splits (default: 95.0)
+
+# Reranking (cross-encoder second pass — precision boost after RRF fusion)
+RERANK_CANDIDATE_POOL= # RRF's output size feeding the reranker (default: 20)
+RERANK_TOP_N=          # Final number of chunks kept after reranking, or after RRF if reranking is disabled (default: 5; must be <= RERANK_CANDIDATE_POOL)
+RERANKING_ENABLED=     # true | false (default: true) — when false, retrieve() falls back to slicing the RRF candidate pool directly
+RERANKER_PROVIDER=     # sentence_transformers (default; only provider implemented so far)
+RERANKER_MODEL=        # Cross-encoder model name (default: cross-encoder/ms-marco-MiniLM-L6-v2)
+RERANKER_DEVICE=       # auto | cpu | cuda | mps (default: auto)
 ```

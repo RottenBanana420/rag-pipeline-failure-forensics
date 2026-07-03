@@ -1,5 +1,45 @@
 # Architecture Overview
 
+## 2026-07-02 — Phase 1: Cross-Encoder Reranker (Complete)
+
+### Second-Pass Reranking
+
+RRF fusion ranks purely by rank position across the dense/sparse lists — it has no view of the actual query text once fusion runs. A reranker adds a precision pass: RRF now widens its own cutoff to a `rerank_candidate_pool` (default 20), and each candidate is re-scored against the literal query text before the final `rerank_top_n` (default 5) is kept.
+
+**`RerankerProtocol`** (`src/retrieval/reranker.py`): `rerank(query, hits, top_n) -> list[VectorStoreHit]`, `provider_id: str`. `make_reranker(settings)` reads `settings.reranker_provider` and returns the matching implementation, lazily importing the provider SDK inside the factory branch — same pattern as `make_embedder`.
+
+**Implemented provider:**
+
+| Provider | Class | File | Default model |
+|---|---|---|---|
+| `sentence_transformers` (default) | `SentenceTransformersReranker` | `src/retrieval/providers/reranker_sentence_transformers.py` | `cross-encoder/ms-marco-MiniLM-L6-v2` |
+
+LLM-as-judge reranking is documented as a future provider only — not implemented, to avoid duplicating capability Phase 4's LLM-as-judge root-cause analysis will already exercise.
+
+**Settings split:** `rerank_candidate_pool` (new, default 20) is RRF's own cutoff; `rerank_top_n` (existing, default 5, unchanged meaning) is the final number of chunks reaching generation, whether or not a reranker is installed. A `model_validator` enforces `rerank_top_n <= rerank_candidate_pool`.
+
+**`HybridRetriever`** accepts an optional `reranker: RerankerProtocol | None` constructor arg (mirrors `Indexer`'s optional `embedder`/`vector_store`/`bm25_store` pattern). When `reranking_enabled=False` or no reranker was injected, `retrieve()` falls back to slicing the RRF candidate pool directly — today's exact pre-reranker behavior, so no existing caller breaks.
+
+**Public API:**
+
+```python
+from src.config import Settings
+from src.retrieval.reranker import make_reranker
+from src.retrieval.hybrid_retriever import HybridRetriever
+
+settings = Settings()
+reranker = make_reranker(settings)          # provider chosen by settings.reranker_provider
+
+retriever = HybridRetriever(dense, sparse, settings, reranker=reranker)
+hits = retriever.retrieve("how do I configure chunking?")  # list[VectorStoreHit], len <= rerank_top_n
+```
+
+**Design notes:**
+- Cross-encoder scores overwrite `VectorStoreHit.similarity` via `dataclasses.replace()` — same convention RRF and BM25 already use at each pipeline stage. Scores are unbounded and model-dependent, not guaranteed to lie in [0, 1].
+- Verified live against the real `cross-encoder/ms-marco-MiniLM-L6-v2` model (not just mocked unit tests): a lexically-favored but semantically irrelevant chunk correctly dropped from rank 1 to last after reranking, while the actually-relevant chunk rose from last to first.
+
+---
+
 ## 2026-07-02 — Phase 1: Voyage, Gemini, Cohere Embedding Providers (Complete)
 
 ### Additional Embedding Providers
@@ -287,7 +327,7 @@ src/
                       #                   # (all complete; qdrant vector store still planned)
                       # DenseRetriever, SparseRetriever, VectorStoreHit (complete)
                       # reciprocal_rank_fusion, HybridRetriever (complete)
-                      # reranker [planned]
+                      # RerankerProtocol/make_reranker, SentenceTransformersReranker (complete)
   generation/         # Grounded prompt, citation parser/verifier, confidence scorer [planned]
   tracing/            # Trace/Span models, context manager, decorator, JSON+SQLite writers [planned]
   analysis/           # Backward trace walker, failure categorizer, evidence chain builder [planned]
