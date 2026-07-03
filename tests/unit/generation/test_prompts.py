@@ -28,9 +28,7 @@ class TestWrapWithNonce:
     def test_opening_and_closing_nonces_match(self):
         result = wrap_with_nonce("context", "Some content")
 
-        match = re.search(
-            r"<context-([0-9a-f]+)>.*?</context-\1>", result, re.DOTALL
-        )
+        match = re.search(r"<context-([0-9a-f]+)>.*?</context-\1>", result, re.DOTALL)
         assert match is not None
 
     def test_nonce_is_16_hex_characters(self):
