@@ -35,7 +35,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-embed-openai = ["openai>=1.30"]
+embed-openai = ["openai>=1.92.0"]
 embed-voyage = ["voyageai>=0.3"]
 embed-gemini = ["google-genai>=1.0"]
 embed-cohere = ["cohere>=5.0"]
