@@ -60,7 +60,7 @@ class Settings(BaseSettings):
 
     # Reranking
     reranking_enabled: bool = Field(default=True)
-    reranker_provider: Literal["sentence_transformers"] = Field(
+    reranker_provider: Literal["sentence_transformers", "cohere", "voyage"] = Field(
         default="sentence_transformers"
     )
     reranker_model: str = Field(default="cross-encoder/ms-marco-MiniLM-L6-v2")
