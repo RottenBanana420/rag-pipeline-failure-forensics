@@ -259,6 +259,113 @@ class TestChunkingSettingsDefaults:
         assert Settings().semantic_breakpoint_percentile == 95.0
 
 
+class TestCitationVerificationSettingsDefaults:
+    def test_citation_judge_provider_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().citation_judge_provider == "anthropic"
+
+    def test_citation_judge_model_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().citation_judge_model == "claude-sonnet-4-5"
+
+    def test_citation_judge_temperature_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().citation_judge_temperature == pytest.approx(0.0)
+
+    def test_anthropic_api_key_default_empty(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().anthropic_api_key == ""
+
+
+class TestCitationVerificationSettingsOverrides:
+    def test_anthropic_api_key_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-abc123")
+        assert Settings().anthropic_api_key == "sk-ant-test-abc123"
+
+    def test_citation_judge_provider_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("CITATION_JUDGE_PROVIDER", "openai")
+        assert Settings().citation_judge_provider == "openai"
+
+    def test_citation_judge_model_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("CITATION_JUDGE_MODEL", "gpt-4-turbo")
+        assert Settings().citation_judge_model == "gpt-4-turbo"
+
+    def test_citation_judge_temperature_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("CITATION_JUDGE_TEMPERATURE", "0.5")
+        assert Settings().citation_judge_temperature == pytest.approx(0.5)
+
+
+class TestCitationVerificationSettingsValidation:
+    def test_citation_judge_provider_invalid_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("CITATION_JUDGE_PROVIDER", "gemini")
+        with pytest.raises(ValidationError, match="citation_judge_provider"):
+            Settings()
+
+    def test_citation_judge_temperature_below_zero_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("CITATION_JUDGE_TEMPERATURE", "-0.1")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_citation_judge_temperature_above_one_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("CITATION_JUDGE_TEMPERATURE", "1.5")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_citation_judge_temperature_boundary_zero(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("CITATION_JUDGE_TEMPERATURE", "0.0")
+        assert Settings().citation_judge_temperature == pytest.approx(0.0)
+
+    def test_citation_judge_temperature_boundary_one(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("CITATION_JUDGE_TEMPERATURE", "1.0")
+        assert Settings().citation_judge_temperature == pytest.approx(1.0)
+
+
 class TestChunkingSettingsValidation:
     def test_invalid_chunk_strategy_rejected(
         self, clean_env: None, monkeypatch: pytest.MonkeyPatch

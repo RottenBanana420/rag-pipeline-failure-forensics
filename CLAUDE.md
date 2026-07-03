@@ -14,7 +14,7 @@ Production-grade RAG (Retrieval-Augmented Generation) system with built-in obser
 | Embeddings | Pluggable via `EmbedderProtocol` — `sentence_transformers` (default, no API key), `openai` (`text-embedding-3-small`), `voyage` (`voyage-3.5`), `gemini` (`gemini-embedding-001`), or `cohere` (`embed-v4.0`); all API providers require their optional extra (`embed-openai`, `embed-voyage`, `embed-gemini`, `embed-cohere`) |
 | Vector Store | Pluggable via `VectorStoreProtocol` — ChromaDB (file-based, implemented) or Qdrant (containerized, planned) |
 | Sparse Search | `rank_bm25` |
-| Reranking | Pluggable via `RerankerProtocol` — `sentence_transformers` cross-encoder (default, `cross-encoder/ms-marco-MiniLM-L6-v2`); LLM-as-judge documented as a future provider |
+| Reranking | Pluggable via `RerankerProtocol` — `sentence_transformers` cross-encoder (default, `cross-encoder/ms-marco-MiniLM-L6-v2`), `cohere` (`rerank-v4.0-pro`), or `voyage` (`rerank-2.5`); LLM-as-judge documented as a future provider |
 | LLM | GPT-4o or Claude Sonnet (via API) |
 | Chunking | LangChain text splitters |
 | Tracing | OpenTelemetry + custom spans |
@@ -105,7 +105,13 @@ src/
                       # RerankerProtocol + make_reranker factory, SentenceTransformersReranker
                       # (providers/reranker_sentence_transformers.py) — cross-encoder second pass,
                       # cuts RRF's candidate pool (20) down to the final top-n (5)
-  generation/         # Grounded prompt, citation parser, citation verifier, confidence scorer
+                      # providers/reranker_cohere.py, providers/reranker_voyage.py — API-backed
+                      # rerankers, same lazy-import factory pattern
+  generation/         # Grounded prompt (prompts.py), citation_parser.py (regex [N] extraction),
+                      # citation_verifier.py (CitationJudgeProtocol + make_citation_judge factory
+                      # + verify_citations)
+                      # providers/citation_judge_anthropic.py, providers/citation_judge_openai.py —
+                      # LLM-as-judge citation verifiers, same lazy-import factory pattern
   tracing/            # Trace/Span models, context manager, decorator, JSON + SQLite writers
   analysis/           # Backward trace walker, failure categorizer, evidence chain builder
   evaluation/         # Golden dataset runner, metric calculators, regression tracker
@@ -132,7 +138,9 @@ data/
 
 **Hybrid retrieval:** Dense (cosine similarity) + sparse (BM25) results are merged via Reciprocal Rank Fusion into a candidate pool, then a reranker cuts to the final top-n. Weights are configurable (default 0.7 dense / 0.3 sparse). See `docs/DECISIONS.md`.
 
-**Reranking:** RRF's cutoff (`rerank_candidate_pool`, default 20) and the final answer size (`rerank_top_n`, default 5) are separate settings — a `model_validator` enforces `rerank_top_n <= rerank_candidate_pool`. The reranker is an injected, optional dependency on `HybridRetriever` (mirrors `Indexer`'s optional `embedder`/`vector_store`/`bm25_store` args): if `reranking_enabled=False` or no reranker is passed in, `retrieve()` falls back to slicing the RRF candidate pool directly. Chosen via `make_reranker(settings)` against `RerankerProtocol`, same lazy-import factory pattern as `make_embedder`.
+**Reranking:** RRF's cutoff (`rerank_candidate_pool`, default 20) and the final answer size (`rerank_top_n`, default 5) are separate settings — a `model_validator` enforces `rerank_top_n <= rerank_candidate_pool`. The reranker is an injected, optional dependency on `HybridRetriever` (mirrors `Indexer`'s optional `embedder`/`vector_store`/`bm25_store` args): if `reranking_enabled=False` or no reranker is passed in, `retrieve()` falls back to slicing the RRF candidate pool directly. Chosen via `make_reranker(settings)` against `RerankerProtocol`, same lazy-import factory pattern as `make_embedder`. Three providers: `sentence_transformers` (local cross-encoder), `cohere` (`rerank-v4.0-pro`), and `voyage` (`rerank-2.5`) — the latter two call a hosted rerank API and overwrite each hit's `similarity` with the returned relevance score. Because Cohere's and Voyage's model names both start with `"rerank-"`, `make_reranker` can't use a prefix check (unlike `make_embedder`) to detect "user left `reranker_model` at its default" — it uses an exact-equality check against the sentence_transformers default (`cross-encoder/ms-marco-MiniLM-L6-v2`) instead, substituting the chosen provider's own default only when that default is still in place.
+
+**Citation verification:** `verify_citations` (`src/generation/citation_verifier.py`) checks whether an LLM-generated answer's `[N]`-style citations are actually backed by the chunks they cite. `parse_citations` (`src/generation/citation_parser.py`) is a v1 regex heuristic — no sentence-boundary NLP — that finds contiguous `[N]` marker runs and pairs each with the claim text preceding it. For each parsed citation, `verify_citations` resolves the (1-indexed) chunk indices against the retrieved `VectorStoreHit`s; indices outside `1..len(hits)` are untrusted LLM output and short-circuit to an unsupported result without ever calling the judge. In-range citations get one `judge.judge(claim, evidence)` call each — no batching — via a `CitationJudgeProtocol` implementation chosen by `make_citation_judge(settings)` (same lazy-import factory pattern as `make_reranker`/`make_embedder`; `anthropic` or `openai`). The claim and evidence are wrapped in nonce-suffixed XML-style tags (`build_judge_prompt`, reusing `wrap_with_nonce` from the grounded-prompt module) so untrusted claim/evidence text can't forge a closing tag and break out of its block. This module is a standalone, directly-callable unit — the codebase has no generation orchestrator yet to wire it into automatically.
 
 **Chunking strategies:** Three switchable strategies — fixed-size with overlap (baseline), recursive character splitting on section headers (structure-aware), and semantic chunking on embedding similarity. Each chunk stores which strategy produced it.
 
@@ -158,8 +166,9 @@ If retrieval confidence is below threshold, the system returns a structured "I d
 ## Environment Variables
 
 ```
-OPENAI_API_KEY=        # Required only if EMBEDDING_PROVIDER=openai (or using GPT-4o for generation)
-ANTHROPIC_API_KEY=     # Required if using Claude Sonnet as LLM
+OPENAI_API_KEY=        # Required only if EMBEDDING_PROVIDER=openai, CITATION_JUDGE_PROVIDER=openai,
+                        # or using GPT-4o for generation
+ANTHROPIC_API_KEY=     # Required if using Claude Sonnet as LLM, or CITATION_JUDGE_PROVIDER=anthropic (default)
 VOYAGE_API_KEY=        # Required only if EMBEDDING_PROVIDER=voyage
 GEMINI_API_KEY=        # Required only if EMBEDDING_PROVIDER=gemini
 COHERE_API_KEY=        # Required only if EMBEDDING_PROVIDER=cohere
@@ -189,7 +198,16 @@ SEMANTIC_BREAKPOINT_PERCENTILE=  # Distance percentile threshold for semantic sp
 RERANK_CANDIDATE_POOL= # RRF's output size feeding the reranker (default: 20)
 RERANK_TOP_N=          # Final number of chunks kept after reranking, or after RRF if reranking is disabled (default: 5; must be <= RERANK_CANDIDATE_POOL)
 RERANKING_ENABLED=     # true | false (default: true) — when false, retrieve() falls back to slicing the RRF candidate pool directly
-RERANKER_PROVIDER=     # sentence_transformers (default; only provider implemented so far)
-RERANKER_MODEL=        # Cross-encoder model name (default: cross-encoder/ms-marco-MiniLM-L6-v2)
-RERANKER_DEVICE=       # auto | cpu | cuda | mps (default: auto)
+RERANKER_PROVIDER=     # sentence_transformers | cohere | voyage (default: sentence_transformers)
+                        # cohere/voyage reuse the embed-cohere/embed-voyage extras (same SDKs) —
+                        # no separate reranking extras
+RERANKER_MODEL=        # Model name (default: cross-encoder/ms-marco-MiniLM-L6-v2 for sentence_transformers;
+                        # rerank-v4.0-pro for cohere; rerank-2.5 for voyage — see make_reranker's
+                        # model-default-substitution logic in src/retrieval/reranker.py)
+RERANKER_DEVICE=       # auto | cpu | cuda | mps (default: auto; sentence_transformers only)
+
+# Citation verification (LLM-as-judge check of [N]-style citations against cited chunks)
+CITATION_JUDGE_PROVIDER=    # anthropic | openai (default: anthropic)
+CITATION_JUDGE_MODEL=       # Model name (default: claude-sonnet-4-5 for anthropic; gpt-4o-2024-08-06 for openai)
+CITATION_JUDGE_TEMPERATURE= # Sampling temperature for the judge call, 0.0-1.0 (default: 0.0)
 ```

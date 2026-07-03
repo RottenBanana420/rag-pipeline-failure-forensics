@@ -95,7 +95,10 @@ class TestMakeReranker:
         with pytest.raises(ValueError) as exc_info:
             make_reranker(st_settings)
 
-        assert "sentence_transformers" in str(exc_info.value)
+        message = str(exc_info.value)
+        assert "sentence_transformers" in message
+        assert "cohere" in message
+        assert "voyage" in message
 
     def test_result_satisfies_reranker_protocol(self, st_settings):
         from src.retrieval.reranker import RerankerProtocol, make_reranker
@@ -115,3 +118,123 @@ class TestMakeReranker:
         import src.retrieval.reranker  # noqa: F401
 
         assert "src.retrieval.reranker" in sys.modules
+
+    def test_cohere_and_voyage_provider_modules_not_imported_at_module_level(self):
+        """Cohere/Voyage provider modules must also be imported lazily, not at
+        reranker.py top-level — importing reranker.py alone must not pull them in."""
+        import sys
+
+        sys.modules.pop("src.retrieval.providers.reranker_cohere", None)
+        sys.modules.pop("src.retrieval.providers.reranker_voyage", None)
+        sys.modules.pop("src.retrieval.reranker", None)
+
+        import src.retrieval.reranker  # noqa: F401
+
+        assert "src.retrieval.reranker" in sys.modules
+        assert "src.retrieval.providers.reranker_cohere" not in sys.modules
+        assert "src.retrieval.providers.reranker_voyage" not in sys.modules
+
+    def _cohere_settings(self, monkeypatch, tmp_path, reranker_model=None):
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv("COHERE_API_KEY", "test-cohere-key")
+        monkeypatch.setenv("RERANKER_PROVIDER", "cohere")
+        monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
+        monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
+        if reranker_model is not None:
+            monkeypatch.setenv("RERANKER_MODEL", reranker_model)
+        from src.config import Settings
+
+        return Settings()
+
+    def _voyage_settings(self, monkeypatch, tmp_path, reranker_model=None):
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv("VOYAGE_API_KEY", "test-voyage-key")
+        monkeypatch.setenv("RERANKER_PROVIDER", "voyage")
+        monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
+        monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
+        if reranker_model is not None:
+            monkeypatch.setenv("RERANKER_MODEL", reranker_model)
+        from src.config import Settings
+
+        return Settings()
+
+    def test_cohere_provider_returns_cohere_reranker(self, monkeypatch, tmp_path):
+        from src.retrieval.providers.reranker_cohere import CohereReranker
+        from src.retrieval.reranker import make_reranker
+
+        settings = self._cohere_settings(monkeypatch, tmp_path)
+        with patch("cohere.ClientV2", return_value=MagicMock()):
+            result = make_reranker(settings)
+
+        assert isinstance(result, CohereReranker)
+
+    def test_voyage_provider_returns_voyage_reranker(self, monkeypatch, tmp_path):
+        from src.retrieval.providers.reranker_voyage import VoyageReranker
+        from src.retrieval.reranker import make_reranker
+
+        settings = self._voyage_settings(monkeypatch, tmp_path)
+        with patch("voyageai.Client", return_value=MagicMock()):
+            result = make_reranker(settings)
+
+        assert isinstance(result, VoyageReranker)
+
+    def test_cohere_default_model_substituted_when_reranker_model_unset(
+        self, monkeypatch, tmp_path
+    ):
+        """When reranker_model still equals the sentence_transformers default (i.e. the
+        user never customized RERANKER_MODEL), the cohere branch must swap in Cohere's
+        own DEFAULT_MODEL rather than passing the sentence_transformers string through."""
+        from src.retrieval.providers.reranker_cohere import DEFAULT_MODEL
+        from src.retrieval.reranker import make_reranker
+
+        settings = self._cohere_settings(monkeypatch, tmp_path)
+        assert settings.reranker_model == "cross-encoder/ms-marco-MiniLM-L6-v2"
+
+        with patch("cohere.ClientV2", return_value=MagicMock()):
+            result = make_reranker(settings)
+
+        assert result._model == DEFAULT_MODEL
+
+    def test_voyage_default_model_substituted_when_reranker_model_unset(
+        self, monkeypatch, tmp_path
+    ):
+        from src.retrieval.providers.reranker_voyage import DEFAULT_MODEL
+        from src.retrieval.reranker import make_reranker
+
+        settings = self._voyage_settings(monkeypatch, tmp_path)
+        assert settings.reranker_model == "cross-encoder/ms-marco-MiniLM-L6-v2"
+
+        with patch("voyageai.Client", return_value=MagicMock()):
+            result = make_reranker(settings)
+
+        assert result._model == DEFAULT_MODEL
+
+    def test_cohere_customized_reranker_model_passes_through_unchanged(
+        self, monkeypatch, tmp_path
+    ):
+        """A user-supplied RERANKER_MODEL (different from the sentence_transformers
+        default) must be trusted as-is, not silently overridden by DEFAULT_MODEL."""
+        from src.retrieval.reranker import make_reranker
+
+        settings = self._cohere_settings(
+            monkeypatch, tmp_path, reranker_model="rerank-english-v3.0"
+        )
+
+        with patch("cohere.ClientV2", return_value=MagicMock()):
+            result = make_reranker(settings)
+
+        assert result._model == "rerank-english-v3.0"
+
+    def test_voyage_customized_reranker_model_passes_through_unchanged(
+        self, monkeypatch, tmp_path
+    ):
+        from src.retrieval.reranker import make_reranker
+
+        settings = self._voyage_settings(
+            monkeypatch, tmp_path, reranker_model="rerank-2.5-lite"
+        )
+
+        with patch("voyageai.Client", return_value=MagicMock()):
+            result = make_reranker(settings)
+
+        assert result._model == "rerank-2.5-lite"

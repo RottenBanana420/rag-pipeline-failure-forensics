@@ -26,15 +26,16 @@ class Settings(BaseSettings):
 
     # API keys
     openai_api_key: str = Field(default="", description="OpenAI API key")
+    anthropic_api_key: str = Field(default="", description="Anthropic API key")
     voyage_api_key: str = Field(default="", description="Voyage AI API key")
     gemini_api_key: str = Field(default="", description="Google Gemini API key")
     cohere_api_key: str = Field(default="", description="Cohere API key")
 
     # Embedding
     embedding_model: str = Field(default="text-embedding-3-small")
-    embedding_provider: Literal["openai", "sentence_transformers", "voyage", "gemini", "cohere"] = Field(
-        default="sentence_transformers"
-    )
+    embedding_provider: Literal[
+        "openai", "sentence_transformers", "voyage", "gemini", "cohere"
+    ] = Field(default="sentence_transformers")
     embedding_device: Literal["auto", "cpu", "cuda", "mps"] = Field(default="auto")
 
     # Vector store
@@ -59,9 +60,16 @@ class Settings(BaseSettings):
 
     # Reranking
     reranking_enabled: bool = Field(default=True)
-    reranker_provider: Literal["sentence_transformers"] = Field(default="sentence_transformers")
+    reranker_provider: Literal["sentence_transformers", "cohere", "voyage"] = Field(
+        default="sentence_transformers"
+    )
     reranker_model: str = Field(default="cross-encoder/ms-marco-MiniLM-L6-v2")
     reranker_device: Literal["auto", "cpu", "cuda", "mps"] = Field(default="auto")
+
+    # Citation verification
+    citation_judge_provider: Literal["anthropic", "openai"] = Field(default="anthropic")
+    citation_judge_model: str = Field(default="claude-sonnet-4-5")
+    citation_judge_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
 
     # Data directories
     raw_data_dir: Path = Field(default=Path("./data/raw"))

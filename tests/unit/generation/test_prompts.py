@@ -11,8 +11,61 @@ from src.generation.prompts import (
     GroundedPrompt,
     build_grounded_prompt,
     format_context_blocks,
+    wrap_with_nonce,
 )
 from src.retrieval.models import VectorStoreHit
+
+
+class TestWrapWithNonce:
+    def test_wraps_content_in_opening_and_closing_tags(self):
+        result = wrap_with_nonce("mytag", "Hello World")
+
+        assert result.startswith("<mytag-")
+        assert result.endswith(">")
+        assert "Hello World" in result
+        assert "</mytag-" in result
+
+    def test_opening_and_closing_nonces_match(self):
+        result = wrap_with_nonce("context", "Some content")
+
+        match = re.search(r"<context-([0-9a-f]+)>.*?</context-\1>", result, re.DOTALL)
+        assert match is not None
+
+    def test_nonce_is_16_hex_characters(self):
+        result = wrap_with_nonce("tag", "content")
+
+        match = re.search(r"<tag-([0-9a-f]+)>", result)
+        assert match is not None
+        nonce = match.group(1)
+        assert len(nonce) == 16
+        assert all(c in "0123456789abcdef" for c in nonce)
+
+    def test_two_calls_produce_different_nonces(self):
+        result1 = wrap_with_nonce("tag", "content")
+        result2 = wrap_with_nonce("tag", "content")
+
+        match1 = re.search(r"<tag-([0-9a-f]+)>", result1)
+        match2 = re.search(r"<tag-([0-9a-f]+)>", result2)
+        assert match1 is not None
+        assert match2 is not None
+        assert match1.group(1) != match2.group(1)
+
+    def test_preserves_exact_content(self):
+        content = "Line 1\nLine 2\n[fake] <tag> content</tag>"
+        result = wrap_with_nonce("mytag", content)
+
+        assert content in result
+
+    def test_works_with_various_tag_names(self):
+        for tag_name in ["context", "question", "data", "block"]:
+            result = wrap_with_nonce(tag_name, "test")
+
+            match = re.search(
+                rf"<{tag_name}-([0-9a-f]+)>.*?</{tag_name}-\1>",
+                result,
+                re.DOTALL,
+            )
+            assert match is not None
 
 
 def make_hit(
