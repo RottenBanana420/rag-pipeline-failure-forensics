@@ -40,6 +40,7 @@ embed-voyage = ["voyageai>=0.3"]
 embed-gemini = ["google-genai>=1.0"]
 embed-cohere = ["cohere>=5.0"]
 embed-local = ["sentence-transformers>=3.0"]
+llm-anthropic = ["anthropic>=0.100.0"]
 store-qdrant = ["qdrant-client>=1.9"]
 dev = [
     "pytest>=8.0",
