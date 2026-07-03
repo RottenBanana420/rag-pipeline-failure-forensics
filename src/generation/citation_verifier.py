@@ -6,10 +6,10 @@ cited chunk indices are resolved against the retrieved `VectorStoreHit`s and
 handed to an LLM-as-judge (`CitationJudgeProtocol`) along with the claim
 text, which returns a verdict on whether the evidence supports the claim.
 
-This module defines the protocol and verification logic only — no concrete
-LLM provider lives here. Providers (Anthropic, OpenAI) and the
-`make_citation_judge` factory are built in later tasks on top of
-`CitationJudgeProtocol`.
+This module defines the protocol and verification logic, plus
+`make_citation_judge`, a factory that reads `settings.citation_judge_provider`
+and returns the appropriate concrete provider (Anthropic or OpenAI) with
+lazy imports — mirrors `make_embedder` in `src.retrieval.embedder`.
 
 Cited chunk indices are untrusted input from the LLM's own answer text (the
 model could reference a chunk number that doesn't exist, or one out of
@@ -17,15 +17,20 @@ range). Out-of-range indices are rejected before ever reaching the judge —
 see `verify_citations`.
 """
 
+from __future__ import annotations
+
 import secrets
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
 from src.generation.citation_parser import parse_citations
 from src.generation.prompts import GroundedPrompt, wrap_with_nonce
 from src.retrieval.models import VectorStoreHit
+
+if TYPE_CHECKING:
+    from src.config import Settings
 
 _NONCE_BYTES = 8  # 16 hex chars — matches prompts.py's wrap_with_nonce callers
 
@@ -91,6 +96,59 @@ class CitationJudgeProtocol(Protocol):
     def provider_id(self) -> str:
         """Short identifier for the provider, e.g. ``"anthropic/claude-3-5-haiku"``."""
         ...
+
+
+def make_citation_judge(settings: Settings) -> CitationJudgeProtocol:
+    """Return a citation judge instance for the provider specified in *settings*.
+
+    Provider modules are imported lazily inside this function so that importing
+    ``src.generation.citation_verifier`` does not pull in optional heavy
+    dependencies (e.g. the ``anthropic`` or ``openai`` SDKs) unless they are
+    actually needed.
+
+    Raises:
+        ValueError: If ``settings.citation_judge_provider`` is not a recognised value.
+    """
+    provider = settings.citation_judge_provider
+
+    if provider == "anthropic":
+        from src.generation.providers.citation_judge_anthropic import (
+            DEFAULT_MODEL as _ANTHROPIC_DEFAULT_MODEL,
+        )
+        from src.generation.providers.citation_judge_anthropic import (
+            AnthropicCitationJudge as _AnthropicCitationJudge,
+        )
+
+        model_name = (
+            settings.citation_judge_model
+            if settings.citation_judge_model.startswith("claude")
+            else _ANTHROPIC_DEFAULT_MODEL
+        )
+        return _AnthropicCitationJudge(
+            settings.model_copy(update={"citation_judge_model": model_name})
+        )
+
+    if provider == "openai":
+        from src.generation.providers.citation_judge_openai import (
+            DEFAULT_MODEL as _OPENAI_DEFAULT_MODEL,
+        )
+        from src.generation.providers.citation_judge_openai import (
+            OpenAICitationJudge as _OpenAICitationJudge,
+        )
+
+        model_name = (
+            settings.citation_judge_model
+            if settings.citation_judge_model.startswith("gpt")
+            else _OPENAI_DEFAULT_MODEL
+        )
+        return _OpenAICitationJudge(
+            settings.model_copy(update={"citation_judge_model": model_name})
+        )
+
+    valid = "anthropic, openai"
+    raise ValueError(
+        f"Unknown citation judge provider: {provider!r}. Valid providers are: {valid}"
+    )
 
 
 def build_judge_prompt(claim: str, evidence: str) -> GroundedPrompt:

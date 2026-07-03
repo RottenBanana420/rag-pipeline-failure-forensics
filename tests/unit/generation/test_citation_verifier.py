@@ -2,6 +2,7 @@
 
 import dataclasses
 import re
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -11,6 +12,7 @@ from src.generation.citation_verifier import (
     CitationVerificationResult,
     JudgeVerdict,
     build_judge_prompt,
+    make_citation_judge,
     verify_citations,
 )
 from src.generation.prompts import GroundedPrompt
@@ -308,3 +310,146 @@ class TestVerifyCitations:
         assert results[0].supported is True  # default canned verdict
         assert results[1].supported is False
         assert len(judge.calls) == 1
+
+
+@pytest.fixture
+def anthropic_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("CITATION_JUDGE_PROVIDER", "anthropic")
+    monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
+    monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
+    from src.config import Settings
+
+    return Settings()
+
+
+@pytest.fixture
+def openai_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("CITATION_JUDGE_PROVIDER", "openai")
+    monkeypatch.setenv("CITATION_JUDGE_MODEL", "gpt-4o-2024-08-06")
+    monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
+    monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
+    from src.config import Settings
+
+    return Settings()
+
+
+class TestMakeCitationJudge:
+    def test_importable(self):
+        from src.generation.citation_verifier import make_citation_judge  # noqa: F401
+
+    def test_anthropic_provider_returns_anthropic_judge(self, anthropic_settings):
+        from src.generation.providers.citation_judge_anthropic import (
+            AnthropicCitationJudge,
+        )
+
+        with patch("anthropic.Anthropic", return_value=MagicMock()):
+            result = make_citation_judge(anthropic_settings)
+
+        assert isinstance(result, AnthropicCitationJudge)
+
+    def test_anthropic_provider_id_reflects_resolved_model(self, anthropic_settings):
+        assert anthropic_settings.citation_judge_model == "claude-sonnet-4-5"
+
+        with patch("anthropic.Anthropic", return_value=MagicMock()):
+            result = make_citation_judge(anthropic_settings)
+
+        assert result.provider_id == "anthropic/claude-sonnet-4-5"
+
+    def test_anthropic_provider_substitutes_default_when_model_not_claude(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setenv("CITATION_JUDGE_PROVIDER", "anthropic")
+        monkeypatch.setenv("CITATION_JUDGE_MODEL", "gpt-4o-2024-08-06")
+        monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
+        monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
+        from src.config import Settings
+        from src.generation.providers.citation_judge_anthropic import DEFAULT_MODEL
+
+        settings = Settings()
+        assert not settings.citation_judge_model.startswith("claude")
+
+        with patch("anthropic.Anthropic", return_value=MagicMock()):
+            result = make_citation_judge(settings)
+
+        assert result.provider_id == f"anthropic/{DEFAULT_MODEL}"
+
+    def test_openai_provider_returns_openai_judge(self, openai_settings):
+        from src.generation.providers.citation_judge_openai import OpenAICitationJudge
+
+        with patch("openai.OpenAI", return_value=MagicMock()):
+            result = make_citation_judge(openai_settings)
+
+        assert isinstance(result, OpenAICitationJudge)
+
+    def test_openai_provider_id_reflects_resolved_model(self, openai_settings):
+        with patch("openai.OpenAI", return_value=MagicMock()):
+            result = make_citation_judge(openai_settings)
+
+        assert result.provider_id == "openai/gpt-4o-2024-08-06"
+
+    def test_openai_provider_substitutes_default_when_model_not_gpt(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv("CITATION_JUDGE_PROVIDER", "openai")
+        monkeypatch.setenv("CHUNK_STRATEGY", "fixed_size")
+        monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
+        from src.config import Settings
+        from src.generation.providers.citation_judge_openai import DEFAULT_MODEL
+
+        settings = Settings()
+        assert not settings.citation_judge_model.startswith("gpt")
+
+        with patch("openai.OpenAI", return_value=MagicMock()):
+            result = make_citation_judge(settings)
+
+        assert result.provider_id == f"openai/{DEFAULT_MODEL}"
+
+    def test_unknown_provider_raises_value_error(self, anthropic_settings):
+        object.__setattr__(
+            anthropic_settings, "citation_judge_provider", "unsupported_provider"
+        )
+
+        with pytest.raises(ValueError, match="unsupported_provider"):
+            make_citation_judge(anthropic_settings)
+
+    def test_unknown_provider_error_lists_valid_providers(self, anthropic_settings):
+        object.__setattr__(anthropic_settings, "citation_judge_provider", "bogus")
+
+        with pytest.raises(ValueError) as exc_info:
+            make_citation_judge(anthropic_settings)
+
+        assert "anthropic" in str(exc_info.value)
+        assert "openai" in str(exc_info.value)
+
+    def test_anthropic_result_satisfies_citation_judge_protocol(
+        self, anthropic_settings
+    ):
+        with patch("anthropic.Anthropic", return_value=MagicMock()):
+            result = make_citation_judge(anthropic_settings)
+
+        assert isinstance(result, CitationJudgeProtocol)
+
+    def test_openai_result_satisfies_citation_judge_protocol(self, openai_settings):
+        with patch("openai.OpenAI", return_value=MagicMock()):
+            result = make_citation_judge(openai_settings)
+
+        assert isinstance(result, CitationJudgeProtocol)
+
+    def test_provider_modules_not_imported_at_module_level(self):
+        """make_citation_judge must use lazy imports — provider modules not at
+        citation_verifier.py top-level."""
+        import sys
+
+        sys.modules.pop("src.generation.providers.citation_judge_anthropic", None)
+        sys.modules.pop("src.generation.providers.citation_judge_openai", None)
+        sys.modules.pop("src.generation.citation_verifier", None)
+
+        import src.generation.citation_verifier  # noqa: F401
+
+        assert "src.generation.citation_verifier" in sys.modules
+        assert "src.generation.providers.citation_judge_anthropic" not in sys.modules
+        assert "src.generation.providers.citation_judge_openai" not in sys.modules

@@ -8,6 +8,7 @@ from src.generation.citation_verifier import (
     CitationVerificationResult,
     JudgeVerdict,
     build_judge_prompt,
+    make_citation_judge,
     verify_citations,
 )
 from src.generation.prompts import (
@@ -29,6 +30,7 @@ __all__ = [
     "JudgeVerdict",
     "build_grounded_prompt",
     "build_judge_prompt",
+    "make_citation_judge",
     "parse_citations",
     "verify_citations",
     "wrap_with_nonce",
