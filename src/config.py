@@ -44,9 +44,24 @@ class Settings(BaseSettings):
     # Retrieval
     dense_top_k: int = Field(default=10, ge=1)
     sparse_top_k: int = Field(default=10, ge=1)
-    rerank_top_n: int = Field(default=5, ge=1)
+    rerank_candidate_pool: int = Field(
+        default=20,
+        ge=1,
+        description="RRF candidate pool size feeding the reranker",
+    )
+    rerank_top_n: int = Field(
+        default=5,
+        ge=1,
+        description="Final number of chunks kept after reranking (or after RRF if reranking is disabled)",
+    )
     dense_weight: float = Field(default=0.7, ge=0.0, le=1.0)
     sparse_weight: float = Field(default=0.3, ge=0.0, le=1.0)
+
+    # Reranking
+    reranking_enabled: bool = Field(default=True)
+    reranker_provider: Literal["sentence_transformers"] = Field(default="sentence_transformers")
+    reranker_model: str = Field(default="cross-encoder/ms-marco-MiniLM-L6-v2")
+    reranker_device: Literal["auto", "cpu", "cuda", "mps"] = Field(default="auto")
 
     # Data directories
     raw_data_dir: Path = Field(default=Path("./data/raw"))
@@ -72,6 +87,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"chunk_overlap ({self.chunk_overlap}) must be less than "
                 f"chunk_size ({self.chunk_size})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def rerank_top_n_not_exceed_candidate_pool(self) -> Settings:
+        if self.rerank_top_n > self.rerank_candidate_pool:
+            raise ValueError(
+                f"rerank_top_n ({self.rerank_top_n}) must be <= "
+                f"rerank_candidate_pool ({self.rerank_candidate_pool})"
             )
         return self
 

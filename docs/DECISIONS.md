@@ -1,5 +1,17 @@
 # Architecture Decision Records
 
+## 2026-07-02 — Cross-Encoder Reranker
+
+**`sentence-transformers` CrossEncoder over LLM-as-judge for the default reranker** — The spec allows either "a small model or LLM-as-judge." A local cross-encoder (`cross-encoder/ms-marco-MiniLM-L6-v2`) requires no API key, no network round-trip, and no per-query cost, matching the project's existing default-to-local-model bias (`EMBEDDING_PROVIDER=sentence_transformers` is likewise the default embedder). LLM-as-judge reranking is left as a documented future provider: it would add per-query LLM cost and latency to every retrieval call and duplicates capability Phase 4's LLM-as-judge root-cause analysis will already exercise.
+
+**`rerank_candidate_pool` (new) vs. `rerank_top_n` (existing, unchanged) — the RRF cutoff and the final answer size are now two separate settings** — Previously RRF's `top_n` was fed directly from `rerank_top_n` (5), so RRF itself performed the final cut and no reranking pass existed. Reusing `rerank_top_n` for the larger candidate pool would have silently changed its meaning for anyone already relying on "top 5" as the final answer size. Instead, `rerank_candidate_pool` (default 20) is a new, additive setting for RRF's output size; `rerank_top_n` keeps its original meaning — the number of chunks that reach generation — whether or not a reranker is installed. A `model_validator` enforces `rerank_top_n <= rerank_candidate_pool`.
+
+**Reranker as an injected, optional dependency on `HybridRetriever`, gated by `reranking_enabled`** — Consistent with `Indexer`'s existing optional-constructor-arg pattern for `embedder`/`vector_store`/`bm25_store`. `HybridRetriever` never imports `make_reranker` itself; composition-root code decides whether to build and pass one. When no reranker is injected, or `reranking_enabled=False`, `retrieve()` falls back to slicing RRF's candidate pool directly — today's exact pre-reranker behavior — so existing callers and tests are unaffected without code changes.
+
+**Cross-encoder scores reuse the `similarity` field on `VectorStoreHit`, via `dataclasses.replace()`** — Same convention as RRF (weighted rank score) and BM25 (max-normalized score) before it: each pipeline stage's current relevance signal overwrites `similarity` on a fresh frozen-dataclass copy rather than introducing a new field per stage. Cross-encoder scores are unbounded and model-dependent (not guaranteed to lie in [0, 1]), same caveat that already applies to raw RRF scores stored in this field today.
+
+---
+
 ## 2026-07-02 — Required `embedder` on `ChromaVectorStore`
 
 **`embedder` is a required constructor argument, not `Optional`** — `ChromaVectorStore` previously accepted `embedder=None`, which silently skipped both metadata stamping and the provider/dimension mismatch guard when the class was constructed directly (bypassing `make_vector_store`, which already required an embedder). A collection built this way could be reopened later under a mismatched embedding provider with no warning, surfacing only as a raw ChromaDB dimension error deep inside a query. Requiring `embedder` unconditionally closes that bypass and makes the two construction paths (`make_vector_store` and direct instantiation) enforce the same guarantee, matching the project's "fail fast at startup, not silently at query time" principle already used for the dimension guard itself.

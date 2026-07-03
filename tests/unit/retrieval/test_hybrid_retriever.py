@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 from src.retrieval.dense_retriever import DenseRetriever
 from src.retrieval.hybrid_retriever import HybridRetriever
 from src.retrieval.models import VectorStoreHit
+from src.retrieval.reranker import RerankerProtocol
 from src.retrieval.sparse_retriever import SparseRetriever
 
 
@@ -86,3 +87,58 @@ class TestHybridRetrieverRetrieve:
         sparse.retrieve.return_value = []
         result = HybridRetriever(dense, sparse, settings).retrieve("q")
         assert result == []
+
+
+class TestHybridRetrieverReranking:
+    def test_falls_back_to_rrf_slice_when_reranker_not_provided(self, settings):
+        dense = MagicMock(spec=DenseRetriever)
+        dense.retrieve.return_value = [_hit(f"d{i}") for i in range(10)]
+        sparse = MagicMock(spec=SparseRetriever)
+        sparse.retrieve.return_value = [_hit(f"s{i}") for i in range(10)]
+        result = HybridRetriever(dense, sparse, settings).retrieve("q")
+        assert len(result) == settings.rerank_top_n
+
+    def test_falls_back_to_rrf_slice_when_reranking_disabled(self, settings, monkeypatch):
+        monkeypatch.setattr(settings, "reranking_enabled", False)
+        dense = MagicMock(spec=DenseRetriever)
+        dense.retrieve.return_value = [_hit(f"d{i}") for i in range(10)]
+        sparse = MagicMock(spec=SparseRetriever)
+        sparse.retrieve.return_value = [_hit(f"s{i}") for i in range(10)]
+        reranker = MagicMock(spec=RerankerProtocol)
+
+        result = HybridRetriever(dense, sparse, settings, reranker=reranker).retrieve("q")
+
+        reranker.rerank.assert_not_called()
+        assert len(result) == settings.rerank_top_n
+
+    def test_delegates_to_reranker_when_enabled(self, settings):
+        dense = MagicMock(spec=DenseRetriever)
+        dense.retrieve.return_value = [_hit(f"d{i}") for i in range(10)]
+        sparse = MagicMock(spec=SparseRetriever)
+        sparse.retrieve.return_value = [_hit(f"s{i}") for i in range(10)]
+        reranker = MagicMock(spec=RerankerProtocol)
+        reranked = [_hit("reranked1"), _hit("reranked2")]
+        reranker.rerank.return_value = reranked
+
+        result = HybridRetriever(dense, sparse, settings, reranker=reranker).retrieve("q")
+
+        reranker.rerank.assert_called_once()
+        call_args = reranker.rerank.call_args
+        assert call_args.args[0] == "q"
+        assert len(call_args.args[1]) == settings.rerank_candidate_pool
+        assert call_args.kwargs == {"top_n": settings.rerank_top_n}
+        assert result == reranked
+
+    def test_rrf_called_with_candidate_pool_not_final_top_n(self, settings):
+        dense = MagicMock(spec=DenseRetriever)
+        dense.retrieve.return_value = [_hit(f"d{i}") for i in range(10)]
+        sparse = MagicMock(spec=SparseRetriever)
+        sparse.retrieve.return_value = [_hit(f"s{i}") for i in range(10)]
+        reranker = MagicMock(spec=RerankerProtocol)
+        reranker.rerank.side_effect = lambda query, hits, top_n: hits[:top_n]
+
+        assert settings.rerank_candidate_pool > settings.rerank_top_n
+        HybridRetriever(dense, sparse, settings, reranker=reranker).retrieve("q")
+
+        candidates_passed_to_reranker = reranker.rerank.call_args.args[1]
+        assert len(candidates_passed_to_reranker) == settings.rerank_candidate_pool

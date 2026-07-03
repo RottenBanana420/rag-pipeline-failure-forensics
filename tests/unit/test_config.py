@@ -68,6 +68,31 @@ class TestSettingsDefaults:
 
         assert Settings().embedding_device == "auto"
 
+    def test_rerank_candidate_pool_default(self, clean_env):
+        from src.config import Settings
+
+        assert Settings().rerank_candidate_pool == 20
+
+    def test_reranking_enabled_default(self, clean_env):
+        from src.config import Settings
+
+        assert Settings().reranking_enabled is True
+
+    def test_reranker_provider_default(self, clean_env):
+        from src.config import Settings
+
+        assert Settings().reranker_provider == "sentence_transformers"
+
+    def test_reranker_model_default(self, clean_env):
+        from src.config import Settings
+
+        assert Settings().reranker_model == "cross-encoder/ms-marco-MiniLM-L6-v2"
+
+    def test_reranker_device_default(self, clean_env):
+        from src.config import Settings
+
+        assert Settings().reranker_device == "auto"
+
 
 class TestSettingsOverrides:
     def test_log_level_env_override(self, monkeypatch, clean_env):
@@ -105,6 +130,24 @@ class TestSettingsOverrides:
         from src.config import Settings
 
         assert Settings().embedding_device == "cpu"
+
+    def test_rerank_candidate_pool_env_override(self, monkeypatch, clean_env):
+        monkeypatch.setenv("RERANK_CANDIDATE_POOL", "40")
+        from src.config import Settings
+
+        assert Settings().rerank_candidate_pool == 40
+
+    def test_reranking_enabled_env_override(self, monkeypatch, clean_env):
+        monkeypatch.setenv("RERANKING_ENABLED", "false")
+        from src.config import Settings
+
+        assert Settings().reranking_enabled is False
+
+    def test_reranker_device_env_override(self, monkeypatch, clean_env):
+        monkeypatch.setenv("RERANKER_DEVICE", "cpu")
+        from src.config import Settings
+
+        assert Settings().reranker_device == "cpu"
 
 
 class TestSettingsValidation:
@@ -147,6 +190,28 @@ class TestSettingsValidation:
         from src.config import Settings
 
         with pytest.raises(ValidationError, match="embedding_device"):
+            Settings()
+
+    def test_rerank_candidate_pool_zero_raises(self, monkeypatch, clean_env):
+        monkeypatch.setenv("RERANK_CANDIDATE_POOL", "0")
+        from src.config import Settings
+
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_invalid_reranker_device_raises(self, monkeypatch, clean_env):
+        monkeypatch.setenv("RERANKER_DEVICE", "tpu")
+        from src.config import Settings
+
+        with pytest.raises(ValidationError, match="reranker_device"):
+            Settings()
+
+    def test_rerank_top_n_exceeds_candidate_pool_raises(self, monkeypatch, clean_env):
+        monkeypatch.setenv("RERANK_TOP_N", "25")
+        monkeypatch.setenv("RERANK_CANDIDATE_POOL", "20")
+        from src.config import Settings
+
+        with pytest.raises(ValidationError, match="rerank_top_n"):
             Settings()
 
 
