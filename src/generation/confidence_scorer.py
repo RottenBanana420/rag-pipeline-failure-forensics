@@ -25,6 +25,7 @@ can forge a closing tag and break out of its block.
 from __future__ import annotations
 
 import secrets
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel
@@ -33,6 +34,8 @@ from src.generation.prompts import GroundedPrompt, wrap_with_nonce
 
 if TYPE_CHECKING:
     from src.config import Settings
+    from src.generation.citation_verifier import CitationVerificationResult
+    from src.retrieval.models import VectorStoreHit
 
 _NONCE_BYTES = 8  # 16 hex chars — matches prompts.py's wrap_with_nonce callers
 
@@ -153,4 +156,73 @@ def make_completeness_judge(settings: Settings) -> CompletenessJudgeProtocol:
     raise ValueError(
         f"Unknown answer completeness judge provider: {provider!r}. "
         f"Valid providers are: {valid}"
+    )
+
+
+@dataclass(frozen=True)
+class ConfidenceScore:
+    """Composite confidence score for a generated answer, plus its three dimensions.
+
+    Attributes:
+        retrieval_confidence: Mean `similarity` across the hits used for
+            generation. ``0.0`` if no hits were retrieved.
+        citation_coverage: Fraction of parsed citations verified as
+            supported. ``0.0`` if no citations were found.
+        answer_completeness: ``1.0`` if the completeness judge found every
+            part of the question addressed, else ``0.0``.
+        composite: Weighted sum of the three dimensions above.
+    """
+
+    retrieval_confidence: float
+    citation_coverage: float
+    answer_completeness: float
+    composite: float
+
+
+def score_confidence(
+    query: str,
+    answer_text: str,
+    hits: list[VectorStoreHit],
+    citation_results: list[CitationVerificationResult],
+    judge: CompletenessJudgeProtocol,
+    retrieval_weight: float = 1 / 3,
+    citation_weight: float = 1 / 3,
+    completeness_weight: float = 1 / 3,
+) -> ConfidenceScore:
+    """Score a generated answer on retrieval, citation, and completeness.
+
+    - `retrieval_confidence` is the mean `similarity` across `hits` (`0.0`
+      if `hits` is empty).
+    - `citation_coverage` is the fraction of `citation_results` with
+      `supported=True` (`0.0` if `citation_results` is empty).
+    - `answer_completeness` comes from exactly one `judge.judge(question,
+      answer)` call: `1.0` if `complete`, else `0.0`.
+
+    `retrieval_weight`/`citation_weight`/`completeness_weight` combine the
+    three into `composite` via a plain weighted sum (not normalized) — same
+    unnormalized-weight convention as `reciprocal_rank_fusion`'s
+    `dense_weight`/`sparse_weight`. Callers pass `settings.confidence_*_weight`
+    explicitly; this function has no dependency on `Settings`.
+    """
+    retrieval_confidence = (
+        sum(hit.similarity for hit in hits) / len(hits) if hits else 0.0
+    )
+    citation_coverage = (
+        sum(1 for result in citation_results if result.supported)
+        / len(citation_results)
+        if citation_results
+        else 0.0
+    )
+    verdict = judge.judge(question=query, answer=answer_text)
+    answer_completeness = 1.0 if verdict.complete else 0.0
+    composite = (
+        retrieval_weight * retrieval_confidence
+        + citation_weight * citation_coverage
+        + completeness_weight * answer_completeness
+    )
+    return ConfidenceScore(
+        retrieval_confidence=retrieval_confidence,
+        citation_coverage=citation_coverage,
+        answer_completeness=answer_completeness,
+        composite=composite,
     )

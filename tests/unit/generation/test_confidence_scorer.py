@@ -5,13 +5,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.generation.citation_verifier import CitationVerificationResult
 from src.generation.confidence_scorer import (
     ANSWER_COMPLETENESS_SYSTEM_PROMPT,
     CompletenessJudgeProtocol,
     CompletenessVerdict,
     build_completeness_judge_prompt,
+    score_confidence,
 )
 from src.generation.prompts import GroundedPrompt
+from src.retrieval.models import VectorStoreHit
 
 
 class FakeCompletenessJudge:
@@ -40,6 +43,30 @@ class FakeCompletenessJudge:
     @property
     def provider_id(self) -> str:
         return self._provider_id
+
+
+def make_hit(
+    chunk_id: str = "chunk-1",
+    text: str = "Paris is the capital of France.",
+    doc_id: str = "doc-1",
+    source_path: str = "/docs/geography.md",
+    title: str = "Geography Facts",
+    section_heading: str | None = "Capitals",
+    chunk_index: int = 0,
+    strategy: str = "fixed_size",
+    similarity: float = 0.9,
+) -> VectorStoreHit:
+    return VectorStoreHit(
+        chunk_id=chunk_id,
+        text=text,
+        doc_id=doc_id,
+        source_path=source_path,
+        title=title,
+        section_heading=section_heading,
+        chunk_index=chunk_index,
+        strategy=strategy,
+        similarity=similarity,
+    )
 
 
 class TestCompletenessJudgeProtocol:
@@ -304,3 +331,119 @@ class TestMakeCompletenessJudge:
             "src.generation.providers.completeness_judge_anthropic" not in sys.modules
         )
         assert "src.generation.providers.completeness_judge_openai" not in sys.modules
+
+
+class TestScoreConfidence:
+    def test_retrieval_confidence_is_mean_similarity(self):
+        hits = [make_hit(similarity=0.8), make_hit(similarity=0.4)]
+        judge = FakeCompletenessJudge()
+
+        result = score_confidence("q", "a", hits, [], judge)
+
+        assert result.retrieval_confidence == pytest.approx(0.6)
+
+    def test_retrieval_confidence_zero_when_no_hits(self):
+        judge = FakeCompletenessJudge()
+
+        result = score_confidence("q", "a", [], [], judge)
+
+        assert result.retrieval_confidence == 0.0
+
+    def test_citation_coverage_is_fraction_supported(self):
+        hits = [make_hit()]
+        citation_results = [
+            CitationVerificationResult(
+                claim_text="c1", chunk_indices=[1], supported=True, reasoning="r"
+            ),
+            CitationVerificationResult(
+                claim_text="c2", chunk_indices=[1], supported=False, reasoning="r"
+            ),
+        ]
+        judge = FakeCompletenessJudge()
+
+        result = score_confidence("q", "a", hits, citation_results, judge)
+
+        assert result.citation_coverage == pytest.approx(0.5)
+
+    def test_citation_coverage_zero_when_no_citations(self):
+        judge = FakeCompletenessJudge()
+
+        result = score_confidence("q", "a", [make_hit()], [], judge)
+
+        assert result.citation_coverage == 0.0
+
+    def test_answer_completeness_one_when_judge_says_complete(self):
+        judge = FakeCompletenessJudge(
+            verdicts={"q": CompletenessVerdict(complete=True, reasoning="Covers it.")}
+        )
+
+        result = score_confidence("q", "a", [], [], judge)
+
+        assert result.answer_completeness == 1.0
+
+    def test_answer_completeness_zero_when_judge_says_incomplete(self):
+        judge = FakeCompletenessJudge(
+            verdicts={
+                "q": CompletenessVerdict(complete=False, reasoning="Missing a part.")
+            }
+        )
+
+        result = score_confidence("q", "a", [], [], judge)
+
+        assert result.answer_completeness == 0.0
+
+    def test_judge_called_once_with_query_and_answer_text(self):
+        judge = FakeCompletenessJudge()
+
+        score_confidence("What is X?", "X is a thing.", [], [], judge)
+
+        assert judge.calls == [("What is X?", "X is a thing.")]
+
+    def test_composite_is_weighted_sum_of_dimensions(self):
+        hits = [make_hit(similarity=0.9)]
+        citation_results = [
+            CitationVerificationResult(
+                claim_text="c", chunk_indices=[1], supported=True, reasoning="r"
+            )
+        ]
+        judge = FakeCompletenessJudge(
+            verdicts={"q": CompletenessVerdict(complete=True, reasoning="ok")}
+        )
+
+        result = score_confidence(
+            "q",
+            "a",
+            hits,
+            citation_results,
+            judge,
+            retrieval_weight=0.5,
+            citation_weight=0.3,
+            completeness_weight=0.2,
+        )
+
+        expected = 0.5 * 0.9 + 0.3 * 1.0 + 0.2 * 1.0
+        assert result.composite == pytest.approx(expected)
+
+    def test_default_weights_are_equal_thirds(self):
+        hits = [make_hit(similarity=0.6)]
+        citation_results = [
+            CitationVerificationResult(
+                claim_text="c", chunk_indices=[1], supported=True, reasoning="r"
+            )
+        ]
+        judge = FakeCompletenessJudge(
+            verdicts={"q": CompletenessVerdict(complete=False, reasoning="no")}
+        )
+
+        result = score_confidence("q", "a", hits, citation_results, judge)
+
+        expected = (1 / 3) * 0.6 + (1 / 3) * 1.0 + (1 / 3) * 0.0
+        assert result.composite == pytest.approx(expected)
+
+    def test_is_frozen_dataclass(self):
+        import dataclasses
+
+        result = score_confidence("q", "a", [], [], FakeCompletenessJudge())
+
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            result.composite = 1.0  # type: ignore[misc]
