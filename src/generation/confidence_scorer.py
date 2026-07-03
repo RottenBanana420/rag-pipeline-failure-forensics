@@ -25,11 +25,14 @@ can forge a closing tag and break out of its block.
 from __future__ import annotations
 
 import secrets
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
 from src.generation.prompts import GroundedPrompt, wrap_with_nonce
+
+if TYPE_CHECKING:
+    from src.config import Settings
 
 _NONCE_BYTES = 8  # 16 hex chars — matches prompts.py's wrap_with_nonce callers
 
@@ -95,3 +98,59 @@ def build_completeness_judge_prompt(question: str, answer: str) -> GroundedPromp
     answer_block = wrap_with_nonce("answer", answer, nonce=nonce)
     user = f"{question_block}\n\n{answer_block}"
     return GroundedPrompt(system=ANSWER_COMPLETENESS_SYSTEM_PROMPT, user=user)
+
+
+def make_completeness_judge(settings: Settings) -> CompletenessJudgeProtocol:
+    """Return a completeness judge instance for the provider in *settings*.
+
+    Provider modules are imported lazily inside this function so that
+    importing ``src.generation.confidence_scorer`` does not pull in optional
+    heavy dependencies (e.g. the ``anthropic`` or ``openai`` SDKs) unless
+    they are actually needed. Mirrors ``make_citation_judge`` in
+    ``citation_verifier.py``.
+
+    Raises:
+        ValueError: If ``settings.answer_completeness_judge_provider`` is not
+            a recognised value.
+    """
+    provider = settings.answer_completeness_judge_provider
+
+    if provider == "anthropic":
+        from src.generation.providers.completeness_judge_anthropic import (
+            DEFAULT_MODEL as _ANTHROPIC_DEFAULT_MODEL,
+        )
+        from src.generation.providers.completeness_judge_anthropic import (
+            AnthropicCompletenessJudge as _AnthropicCompletenessJudge,
+        )
+
+        model_name = (
+            settings.answer_completeness_judge_model
+            if settings.answer_completeness_judge_model.startswith("claude")
+            else _ANTHROPIC_DEFAULT_MODEL
+        )
+        return _AnthropicCompletenessJudge(
+            settings.model_copy(update={"answer_completeness_judge_model": model_name})
+        )
+
+    if provider == "openai":
+        from src.generation.providers.completeness_judge_openai import (
+            DEFAULT_MODEL as _OPENAI_DEFAULT_MODEL,
+        )
+        from src.generation.providers.completeness_judge_openai import (
+            OpenAICompletenessJudge as _OpenAICompletenessJudge,
+        )
+
+        model_name = (
+            settings.answer_completeness_judge_model
+            if settings.answer_completeness_judge_model.startswith("gpt")
+            else _OPENAI_DEFAULT_MODEL
+        )
+        return _OpenAICompletenessJudge(
+            settings.model_copy(update={"answer_completeness_judge_model": model_name})
+        )
+
+    valid = "anthropic, openai"
+    raise ValueError(
+        f"Unknown answer completeness judge provider: {provider!r}. "
+        f"Valid providers are: {valid}"
+    )
