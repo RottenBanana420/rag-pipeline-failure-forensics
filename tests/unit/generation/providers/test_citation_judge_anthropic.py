@@ -167,3 +167,21 @@ class TestAnthropicCitationJudge:
 
         assert isinstance(DEFAULT_MODEL, str)
         assert DEFAULT_MODEL.startswith("claude-")
+
+    def test_judge_raises_runtime_error_when_parsed_output_is_none(self, settings):
+        from src.generation.providers.citation_judge_anthropic import (
+            AnthropicCitationJudge,
+        )
+
+        with patch("anthropic.Anthropic") as MockAnthropic:
+            mock_parse = MockAnthropic.return_value.messages.parse
+            resp = MagicMock()
+            resp.parsed_output = None
+            mock_parse.return_value = resp
+            judge = AnthropicCitationJudge(settings)
+
+            with pytest.raises(
+                RuntimeError,
+                match="Anthropic structured output returned no parsed_output",
+            ):
+                judge.judge(claim="claim", evidence="evidence")

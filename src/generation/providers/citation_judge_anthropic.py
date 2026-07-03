@@ -57,7 +57,9 @@ class AnthropicCitationJudge:
             output_format=JudgeVerdict,
         )
         parsed = response.parsed_output
-        assert parsed is not None, (
-            "Anthropic structured output returned no parsed_output"
-        )
+        if parsed is None:
+            raise RuntimeError(
+                f"Anthropic structured output returned no parsed_output "
+                f"(model={self._model})"
+            )
         return parsed
