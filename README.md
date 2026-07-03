@@ -22,7 +22,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | Phase | Scope | Status |
 |-------|-------|--------|
 | 1 | Ingestion, Chunking, Hybrid Retrieval | Done |
-| 2 | Generation with Citations | Planned |
+| 2 | Generation with Citations | In Progress |
 | 3 | Tracing & Instrumentation | Planned |
 | 4 | Backward Failure Analysis | Planned |
 | 5 | Visual Explorers & Frontend | Planned |
@@ -44,3 +44,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | RRF fusion (weighted, k=60) + HybridRetriever | Done |
 | Voyage / Gemini / Cohere embedding providers | Done |
 | Cross-encoder reranker (cuts to top 5) | Done |
+| Cohere / Voyage reranker providers | Done |
+
+### Phase 2 Progress
+
+| Component | Status |
+|-----------|--------|
+| Grounded generation prompt (citation instructions, injection-hardened) | Done |
+| Citation verification (LLM-as-judge per citation, Anthropic/OpenAI) | Done |
+| Answer confidence scorer | Not started |
+| Graceful "I don't know" handling below confidence threshold | Not started |

@@ -1,5 +1,75 @@
 # Architecture Overview
 
+## 2026-07-03 — Phase 2: Citation Verification (Complete)
+
+### LLM-as-Judge Citation Checking
+
+The grounded prompt (below) asks the generation LLM to cite every claim with `[N]` markers, but nothing verified those citations were honest until now. `verify_citations` closes that gap: it re-reads the model's own answer text, pairs each citation with the chunk(s) it claims to cite, and asks a second LLM call whether the cited text actually supports the claim.
+
+**`parse_citations`** (`src/generation/citation_parser.py`): a v1 regex heuristic, not sentence-boundary NLP. It finds each contiguous run of `[N]` markers (`r"(?:\[\d+\])+"`) and pairs it with the text since the previous run (or start of string) as the claim. Good enough to bound "what text does this citation apply to" without a full parser.
+
+**`CitationJudgeProtocol`** (`src/generation/citation_verifier.py`): `judge(claim, evidence) -> JudgeVerdict`, `provider_id: str`. `JudgeVerdict` is a pydantic `BaseModel` (`supported: bool`, `reasoning: str`) rather than the codebase's usual frozen dataclass — deliberately, so it can be passed straight through as the structured-output schema type to both providers' SDKs (`output_format=JudgeVerdict` for Anthropic, `response_format=JudgeVerdict` for OpenAI). `make_citation_judge(settings)` reads `settings.citation_judge_provider` and returns the matching implementation, same lazy-import factory pattern as `make_embedder`/`make_reranker`.
+
+**Implemented providers:**
+
+| Provider | Class | File | Default model |
+|---|---|---|---|
+| `anthropic` (default) | `AnthropicCitationJudge` | `src/generation/providers/citation_judge_anthropic.py` | `claude-sonnet-4-5` |
+| `openai` | `OpenAICitationJudge` | `src/generation/providers/citation_judge_openai.py` | `gpt-4o-2024-08-06` |
+
+**`verify_citations(answer_text, hits, judge) -> list[CitationVerificationResult]`:** resolves each citation's (1-indexed) chunk indices against `hits`. An index outside `1..len(hits)` is untrusted LLM output — the model referenced a chunk that doesn't exist — and short-circuits to an unsupported result without ever calling the judge. In-range citations get exactly one `judge.judge(claim, evidence)` call each (no batching), with the cited hits' text joined as evidence.
+
+**Public API:**
+
+```python
+from src.config import settings
+from src.generation import make_citation_judge, verify_citations
+
+judge = make_citation_judge(settings)          # provider chosen by settings.citation_judge_provider
+results = verify_citations(answer_text, hits, judge)
+for r in results:
+    print(r.supported, r.chunk_indices, r.reasoning)
+```
+
+**Design notes:**
+- Prompt-injection defense reuses the grounded prompt's spotlighting pattern: `build_judge_prompt` wraps both the claim and the evidence in nonce-suffixed `<claim-...>`/`<evidence-...>` tags via `wrap_with_nonce` (extracted from `build_grounded_prompt` for this reuse), so neither the model's own citation text nor untrusted chunk content can forge a closing tag and escape its block.
+- Both provider `judge()` implementations raise `RuntimeError` (not a bare `assert`) when the SDK returns no parsed structured output — `assert` is stripped under `python -O`, which would otherwise let a `None` verdict propagate into an opaque `AttributeError` several frames later.
+- This module is a standalone, directly-callable unit — the codebase has no generation orchestrator yet (nothing calls an LLM to produce the initial grounded answer), so `verify_citations` currently takes `answer_text` as a plain parameter rather than generating it itself. Wiring it into an end-to-end `ask()` flow is future work.
+
+---
+
+## 2026-07-03 — Phase 1: Cohere & Voyage Reranker Providers (Complete)
+
+### Additional Reranker Providers
+
+Extends the reranker beyond the local `sentence_transformers` cross-encoder to two hosted rerank APIs, mirroring the embedder's multi-provider pattern.
+
+| Provider | Class | File | Default model |
+|---|---|---|---|
+| `cohere` | `CohereReranker` | `src/retrieval/providers/reranker_cohere.py` | `rerank-v4.0-pro` |
+| `voyage` | `VoyageReranker` | `src/retrieval/providers/reranker_voyage.py` | `rerank-2.5` |
+
+Both follow `reranker_sentence_transformers.py`'s contract exactly (`rerank(query, hits, top_n) -> list[VectorStoreHit]`, results mapped back via `dataclasses.replace(hit, similarity=...)`, empty `hits` short-circuits without an API call) and reuse the embedder's existing `cohere_api_key`/`voyage_api_key` settings and `embed-cohere`/`embed-voyage` extras — no new API keys or extras needed.
+
+**Model-default resolution can't reuse `make_embedder`'s prefix trick:** Cohere's model (`rerank-v4.0-pro`) and Voyage's model (`rerank-2.5`) both start with `"rerank-"`, so `make_reranker` can't tell them apart by prefix the way `make_embedder` distinguishes `text-embedding-*` from `voyage-*`. Instead, it applies a provider's own default only when `settings.reranker_model` still equals the sentence_transformers default (`cross-encoder/ms-marco-MiniLM-L6-v2`) — i.e., the user hasn't customized it at all — and otherwise passes the configured value through verbatim, trusting the user set it correctly for whichever provider they chose.
+
+**Public API:**
+
+```python
+from src.config import Settings
+from src.retrieval.reranker import make_reranker
+
+settings = Settings(reranker_provider="cohere")   # or "voyage"
+reranker = make_reranker(settings)
+hits = reranker.rerank(query, candidate_hits, top_n=5)
+```
+
+**Design notes:**
+- Both providers preserve the hosted API's returned order (already sorted descending by relevance) rather than re-sorting locally.
+- Voyage's SDK parameter is `top_k`, not `top_n` like Cohere's — an easy name to mis-copy between the two nearly-identical provider modules; each was verified independently against current SDK docs before implementation.
+
+---
+
 ## 2026-07-02 — Phase 1: Cross-Encoder Reranker (Complete)
 
 ### Second-Pass Reranking
