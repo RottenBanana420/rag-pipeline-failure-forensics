@@ -1,5 +1,47 @@
 # Architecture Overview
 
+## 2026-07-03 — Phase 2: Answer Confidence Scoring (Complete)
+
+### Composite Confidence Score
+
+`score_confidence` rates a generated answer on three independent dimensions and combines them into one composite score, closing the loop described in the project's "Confidence Scoring" spec.
+
+**Retrieval confidence** — mean `similarity` across the `VectorStoreHit`s actually used for generation (`0.0` if none retrieved). All reranker providers already overwrite `similarity` with their own relevance score before this runs, so the signal is consistent regardless of which reranker (or none) produced the hits.
+
+**Citation coverage** — the fraction of `verify_citations`' `CitationVerificationResult`s with `supported=True` (`0.0` if no citations were found). Pure arithmetic over Phase 2's existing citation verification output — no new LLM call.
+
+**Answer completeness** — the one dimension that needs judgment: whether the answer addresses every part of the question. `CompletenessJudgeProtocol` (`judge(question, answer) -> CompletenessVerdict`, `provider_id`) mirrors `CitationJudgeProtocol` exactly. `make_completeness_judge(settings)` reads `settings.answer_completeness_judge_provider` and returns the matching implementation, same lazy-import factory pattern as `make_citation_judge`.
+
+**Implemented providers:**
+
+| Provider | Class | File | Default model |
+|---|---|---|---|
+| `anthropic` (default) | `AnthropicCompletenessJudge` | `src/generation/providers/completeness_judge_anthropic.py` | `claude-sonnet-4-5` |
+| `openai` | `OpenAICompletenessJudge` | `src/generation/providers/completeness_judge_openai.py` | `gpt-4o-2024-08-06` |
+
+**Public API:**
+
+```python
+from src.config import settings
+from src.generation import make_completeness_judge, score_confidence
+
+judge = make_completeness_judge(settings)
+result = score_confidence(
+    query, answer_text, hits, citation_results, judge,
+    retrieval_weight=settings.confidence_retrieval_weight,
+    citation_weight=settings.confidence_citation_weight,
+    completeness_weight=settings.confidence_completeness_weight,
+)
+print(result.retrieval_confidence, result.citation_coverage, result.answer_completeness, result.composite)
+```
+
+**Design notes:**
+- `CompletenessVerdict` is a pydantic `BaseModel` (`complete: bool`, `reasoning: str`), not a frozen dataclass — same rationale as `JudgeVerdict`: it's passed directly as the structured-output schema type to both providers' SDKs.
+- `score_confidence` takes plain `float` weight parameters with defaults (not a `Settings` object), mirroring `reciprocal_rank_fusion(dense_weight=..., sparse_weight=...)` — the composite is an unnormalized weighted sum, same convention as RRF.
+- This module is a standalone, directly-callable unit — like citation verification, there is no generation orchestrator yet to wire it into automatically. The "if retrieval confidence is below threshold, return a structured 'I don't know' response" fallback described in the project spec is explicitly out of scope here; `score_confidence` only returns the score.
+
+---
+
 ## 2026-07-03 — Phase 2: Citation Verification (Complete)
 
 ### LLM-as-Judge Citation Checking

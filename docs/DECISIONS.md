@@ -1,5 +1,21 @@
 # Architecture Decision Records
 
+## 2026-07-03 — Answer Confidence Scoring
+
+**Boolean `complete`/`incomplete` verdict, mapped to `1.0`/`0.0`, rather than a continuous completeness score** — Matches the existing `JudgeVerdict.supported` boolean pattern from citation verification rather than asking the judge for a 1-5 or 0-1 score directly. A binary verdict is easier for an LLM judge to return consistently and easier to unit-test with canned fixtures than a continuous score whose exact numeric value would otherwise need its own calibration.
+
+**`score_confidence` takes plain `float` weight parameters, not a `Settings` object** — Mirrors `reciprocal_rank_fusion(dense_weight=0.7, sparse_weight=0.3, ...)` in `src/retrieval/fusion.py`: the pure aggregation function stays decoupled from `Settings` and fully testable without constructing one; the future composition-root caller passes `settings.confidence_retrieval_weight` etc. explicitly, same as `HybridRetriever` already does for RRF's weights.
+
+**Citation coverage is `0.0`, not `1.0`, when no citations were parsed** — An answer with zero verified citations has provided zero evidence of grounding, so it should score low on this dimension rather than scoring a vacuous "100% of nothing." This keeps `citation_coverage` interpretable as "how much of what was claimed is actually backed by evidence," not "how much of what little we checked passed."
+
+**No new `pyproject.toml` extras or API keys** — The answer-completeness judge reuses `embed-openai` (`openai>=1.92.0`) and `llm-anthropic` (`anthropic>=0.100.0`), exactly as `CitationJudgeProtocol`'s providers already do. Both features share the same SDKs and the same `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`, so there is no reason to add a parallel dependency surface.
+
+**Confidence scoring is a standalone unit, not wired into a generation orchestrator** — Same situation as citation verification: no code yet calls an LLM to produce the initial grounded answer, so `score_confidence(query, answer_text, hits, citation_results, judge, ...)` takes all of these as plain parameters rather than generating any of them itself. It will be composed into an end-to-end `ask()` flow once that orchestrator exists.
+
+**The "below-threshold → I don't know" fallback from the project spec is out of scope for this feature** — `score_confidence` returns the composite score and its three dimensions; deciding whether a low score should trigger `INSUFFICIENT_CONTEXT_RESPONSE` (already defined in `src/generation/prompts.py`) is left to the not-yet-built orchestrator, consistent with confidence scoring being a standalone unit.
+
+---
+
 ## 2026-07-03 — Citation Verification
 
 **`JudgeVerdict` is a pydantic `BaseModel`, breaking the codebase's usual frozen-dataclass convention for result types** — Every other pipeline result type (`VectorStoreHit`, `Citation`, `CitationVerificationResult`) is a frozen `@dataclass`. `JudgeVerdict` isn't, because both LLM SDKs' structured-output APIs (Anthropic's `messages.parse(output_format=...)`, OpenAI's `chat.completions.parse(response_format=...)`) require a pydantic model class as the schema argument, and the returned parsed object is itself an instance of exactly that class. Defining a separate dataclass and hand-converting on every provider call would add a translation step with no benefit; passing `JudgeVerdict` straight through keeps both providers' `judge()` implementations a single call plus a null-check.
