@@ -6,6 +6,7 @@ from src.retrieval.bm25_store import BM25Store
 from src.retrieval.models import VectorStoreHit
 from src.retrieval.sparse_retriever import SparseRetriever
 from src.retrieval.vector_store import VectorStore
+from src.tracing.context import collect_spans
 
 
 def _hit(**kwargs) -> VectorStoreHit:
@@ -155,3 +156,25 @@ class TestSparseRetriever:
 
         called_ids = vs.get_by_ids.call_args.args[0]
         assert "c-001" not in called_ids
+
+
+class TestSparseRetrieverTracing:
+    def test_retrieve_records_retrieval_span(self):
+        bm25 = MagicMock(spec=BM25Store)
+        bm25.get_scores.return_value = [("c-000", 3.5)]
+        vs = MagicMock(spec=VectorStore)
+        vs.get_by_ids.return_value = [_hit(chunk_id="c-000")]
+
+        with collect_spans() as spans:
+            SparseRetriever(bm25, vs).retrieve("q")
+
+        assert len(spans) == 1
+        assert spans[0].step == "retrieval"
+        assert spans[0].error is None
+
+    def test_retrieve_noop_outside_collect_spans(self):
+        bm25 = MagicMock(spec=BM25Store)
+        bm25.get_scores.return_value = []
+        vs = MagicMock(spec=VectorStore)
+
+        SparseRetriever(bm25, vs).retrieve("q")
