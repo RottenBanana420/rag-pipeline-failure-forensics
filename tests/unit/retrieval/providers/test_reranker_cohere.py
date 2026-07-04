@@ -181,3 +181,22 @@ class TestCohereReranker:
         finally:
             if cohere_mod is not None:
                 sys.modules["cohere"] = cohere_mod
+
+
+class TestCohereRerankerTracing:
+    def test_rerank_records_ranking_span(self, settings):
+        from src.retrieval.providers.reranker_cohere import CohereReranker
+        from src.tracing.context import collect_spans
+
+        hits = [_hit("a")]
+        with patch("cohere.ClientV2") as MockClient:
+            MockClient.return_value.v2.rerank.return_value = _mock_response(
+                [_result(0, 0.9)]
+            )
+            reranker = CohereReranker(settings)
+            with collect_spans() as spans:
+                reranker.rerank("q", hits, top_n=1)
+
+        assert len(spans) == 1
+        assert spans[0].step == "ranking"
+        assert spans[0].error is None

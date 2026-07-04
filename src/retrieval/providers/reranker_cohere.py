@@ -12,6 +12,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from src.retrieval.models import VectorStoreHit
+from src.tracing.instrumentation import traced
 
 if TYPE_CHECKING:
     from src.config import Settings
@@ -35,6 +36,7 @@ class CohereReranker:
         """Provider identifier including model name, e.g. ``"cohere/rerank-v4.0-pro"``."""
         return f"cohere/{self._model}"
 
+    @traced("ranking")
     def rerank(
         self, query: str, hits: list[VectorStoreHit], top_n: int
     ) -> list[VectorStoreHit]:
