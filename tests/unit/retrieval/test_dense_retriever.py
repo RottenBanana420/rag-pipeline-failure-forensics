@@ -4,6 +4,7 @@ from src.retrieval.dense_retriever import DenseRetriever
 from src.retrieval.embedder import Embedder
 from src.retrieval.models import VectorStoreHit
 from src.retrieval.vector_store import VectorStore
+from src.tracing.context import collect_spans
 
 
 def _hit(**kwargs) -> VectorStoreHit:
@@ -73,3 +74,27 @@ class TestDenseRetriever:
 
         _, called_k = vs.query.call_args.args
         assert called_k == 10
+
+
+class TestDenseRetrieverTracing:
+    def test_retrieve_records_retrieval_span(self):
+        embedder = MagicMock(spec=Embedder)
+        embedder.embed.return_value = [[1.0, 0.0, 0.0]]
+        vs = MagicMock(spec=VectorStore)
+        vs.query.return_value = [_hit(chunk_id="c-000")]
+
+        with collect_spans() as spans:
+            DenseRetriever(embedder, vs).retrieve("q")
+
+        assert len(spans) == 1
+        assert spans[0].step == "retrieval"
+        assert spans[0].error is None
+
+    def test_retrieve_noop_outside_collect_spans(self):
+        embedder = MagicMock(spec=Embedder)
+        embedder.embed.return_value = [[1.0, 0.0, 0.0]]
+        vs = MagicMock(spec=VectorStore)
+        vs.query.return_value = []
+
+        # Must not raise even with no active tracing context.
+        DenseRetriever(embedder, vs).retrieve("q")
