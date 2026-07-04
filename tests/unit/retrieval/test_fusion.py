@@ -4,6 +4,7 @@ import pytest
 
 from src.retrieval.fusion import reciprocal_rank_fusion
 from src.retrieval.models import VectorStoreHit
+from src.tracing.context import collect_spans
 
 
 def _hit(chunk_id: str, similarity: float = 0.9) -> VectorStoreHit:
@@ -26,19 +27,25 @@ class TestRRFEmptyInputs:
 
     def test_dense_only_returns_top_n(self):
         hits = [_hit(f"c{i}") for i in range(10)]
-        result = reciprocal_rank_fusion(hits, [], dense_weight=1.0, sparse_weight=0.0, top_n=3)
+        result = reciprocal_rank_fusion(
+            hits, [], dense_weight=1.0, sparse_weight=0.0, top_n=3
+        )
         assert len(result) == 3
 
     def test_sparse_only_returns_top_n(self):
         hits = [_hit(f"c{i}") for i in range(10)]
-        result = reciprocal_rank_fusion([], hits, dense_weight=0.0, sparse_weight=1.0, top_n=3)
+        result = reciprocal_rank_fusion(
+            [], hits, dense_weight=0.0, sparse_weight=1.0, top_n=3
+        )
         assert len(result) == 3
 
 
 class TestRRFScoring:
     def test_rank1_beats_rank2_same_weight(self):
         d = [_hit("rank1"), _hit("rank2")]
-        result = reciprocal_rank_fusion(d, [], dense_weight=1.0, sparse_weight=0.0, top_n=2)
+        result = reciprocal_rank_fusion(
+            d, [], dense_weight=1.0, sparse_weight=0.0, top_n=2
+        )
         ids = [h.chunk_id for h in result]
         assert ids == ["rank1", "rank2"]
 
@@ -58,7 +65,9 @@ class TestRRFScoring:
 
     def test_similarity_field_set_to_rrf_score(self):
         hits = [_hit("c1", similarity=0.99)]
-        result = reciprocal_rank_fusion(hits, [], dense_weight=1.0, sparse_weight=0.0, top_n=1)
+        result = reciprocal_rank_fusion(
+            hits, [], dense_weight=1.0, sparse_weight=0.0, top_n=1
+        )
         expected = 1.0 / (60 + 1)
         assert result[0].similarity == pytest.approx(expected, rel=1e-6)
 
@@ -80,6 +89,23 @@ class TestRRFScoring:
     def test_zero_weight_list_excluded_from_top_n(self):
         dense = [_hit("d1"), _hit("d2")]
         sparse = [_hit("s1")]
-        result = reciprocal_rank_fusion(dense, sparse, dense_weight=1.0, sparse_weight=0.0, top_n=2)
+        result = reciprocal_rank_fusion(
+            dense, sparse, dense_weight=1.0, sparse_weight=0.0, top_n=2
+        )
         chunk_ids = {h.chunk_id for h in result}
         assert chunk_ids == {"d1", "d2"}
+
+
+class TestFusionTracing:
+    def test_records_retrieval_span(self):
+        hits = [_hit("c1")]
+
+        with collect_spans() as spans:
+            reciprocal_rank_fusion(hits, [], top_n=1)
+
+        assert len(spans) == 1
+        assert spans[0].step == "retrieval"
+        assert spans[0].error is None
+
+    def test_noop_outside_collect_spans(self):
+        reciprocal_rank_fusion([], [], top_n=5)

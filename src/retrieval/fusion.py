@@ -1,10 +1,12 @@
 from dataclasses import replace
 
 from src.retrieval.models import VectorStoreHit
+from src.tracing.instrumentation import traced
 
 _RRF_K = 60
 
 
+@traced("retrieval")
 def reciprocal_rank_fusion(
     dense_hits: list[VectorStoreHit],
     sparse_hits: list[VectorStoreHit],
