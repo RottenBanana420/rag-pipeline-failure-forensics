@@ -59,6 +59,10 @@ class TestSpanValidation:
         assert span.token_count == 250
         assert span.confidence_score == 4
 
+    def test_confidence_score_boundaries_accepted(self):
+        assert Span(**_valid_span_kwargs(confidence_score=1)).confidence_score == 1
+        assert Span(**_valid_span_kwargs(confidence_score=5)).confidence_score == 5
+
     def test_confidence_score_below_range_rejected(self):
         with pytest.raises(ValidationError):
             Span(**_valid_span_kwargs(confidence_score=0))
@@ -74,6 +78,11 @@ class TestSpanValidation:
     def test_negative_latency_rejected(self):
         with pytest.raises(ValidationError):
             Span(**_valid_span_kwargs(latency_ms=-0.1))
+
+    def test_empty_input_and_output_accepted(self):
+        span = Span(**_valid_span_kwargs(input="", output=""))
+        assert span.input == ""
+        assert span.output == ""
 
     def test_round_trip_json(self):
         span = Span(**_valid_span_kwargs(confidence_score=5, token_count=100))
