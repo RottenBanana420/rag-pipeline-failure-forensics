@@ -478,3 +478,20 @@ class TestScoreConfidence:
 
         with pytest.raises(dataclasses.FrozenInstanceError):
             result.composite = 1.0  # type: ignore[misc]
+
+    def test_records_generation_span(self):
+        from src.tracing.context import collect_spans
+
+        judge = FakeCompletenessJudge()
+
+        with collect_spans() as spans:
+            score_confidence("q", "a", [make_hit()], [], judge)
+
+        assert len(spans) == 1
+        assert spans[0].step == "generation"
+        assert spans[0].error is None
+
+    def test_noop_outside_collect_spans(self):
+        judge = FakeCompletenessJudge()
+
+        score_confidence("q", "a", [], [], judge)

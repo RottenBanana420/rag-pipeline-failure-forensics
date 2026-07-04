@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from pydantic import BaseModel
 
 from src.generation.prompts import GroundedPrompt, wrap_with_nonce
+from src.tracing.instrumentation import traced
 
 if TYPE_CHECKING:
     from src.config import Settings
@@ -179,6 +180,7 @@ class ConfidenceScore:
     composite: float
 
 
+@traced("generation")
 def score_confidence(
     query: str,
     answer_text: str,
