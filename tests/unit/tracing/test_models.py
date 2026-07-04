@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from src.tracing.models import Span
+from src.tracing.models import Span, Trace
 
 
 def _valid_span_kwargs(**overrides: object) -> dict[str, object]:
@@ -79,3 +79,69 @@ class TestSpanValidation:
         span = Span(**_valid_span_kwargs(confidence_score=5, token_count=100))
         restored = Span.model_validate_json(span.model_dump_json())
         assert restored == span
+
+
+def _valid_trace_kwargs(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {"status": "success"}
+    base.update(overrides)
+    return base
+
+
+class TestTraceValidation:
+    def test_valid_minimal_trace(self):
+        trace = Trace(**_valid_trace_kwargs())
+        assert trace.status == "success"
+        assert trace.spans == []
+        assert trace.final_output is None
+        assert isinstance(trace.trace_id, str) and trace.trace_id
+
+    def test_trace_id_auto_generated_and_unique(self):
+        trace_a = Trace(**_valid_trace_kwargs())
+        trace_b = Trace(**_valid_trace_kwargs())
+        assert trace_a.trace_id != trace_b.trace_id
+
+    def test_all_statuses_accepted(self):
+        for status in ("success", "failure", "degraded"):
+            trace = Trace(**_valid_trace_kwargs(status=status))
+            assert trace.status == status
+
+    def test_invalid_status_rejected(self):
+        with pytest.raises(ValidationError):
+            Trace(**_valid_trace_kwargs(status="not_a_status"))
+
+    def test_status_required(self):
+        with pytest.raises(ValidationError):
+            Trace(spans=[], final_output=None)
+
+    def test_trace_holds_spans(self):
+        span = Span(
+            step="ingestion",
+            input='{"path": "doc.md"}',
+            output='{"doc_id": "abc"}',
+            latency_ms=3.0,
+        )
+        trace = Trace(
+            **_valid_trace_kwargs(spans=[span], final_output="The answer is 42.")
+        )
+        assert trace.spans == [span]
+        assert trace.final_output == "The answer is 42."
+
+    def test_round_trip_json_with_spans(self):
+        span = Span(
+            step="generation",
+            input='{"prompt": "..."}',
+            output="The answer is 42.",
+            llm_prompt="Answer using only the provided context.",
+            token_count=300,
+            latency_ms=850.2,
+            confidence_score=4,
+        )
+        trace = Trace(spans=[span], final_output="The answer is 42.", status="success")
+        restored = Trace.model_validate_json(trace.model_dump_json())
+        assert restored == trace
+
+    def test_round_trip_model_dump(self):
+        span = Span(step="ranking", input="[]", output="[]", latency_ms=5.0)
+        trace = Trace(spans=[span], status="degraded")
+        restored = Trace.model_validate(trace.model_dump())
+        assert restored == trace
