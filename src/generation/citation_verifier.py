@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from src.generation.citation_parser import parse_citations
 from src.generation.prompts import GroundedPrompt, wrap_with_nonce
 from src.retrieval.models import VectorStoreHit
+from src.tracing.instrumentation import traced
 
 if TYPE_CHECKING:
     from src.config import Settings
@@ -167,6 +168,7 @@ def build_judge_prompt(claim: str, evidence: str) -> GroundedPrompt:
     return GroundedPrompt(system=CITATION_JUDGE_SYSTEM_PROMPT, user=user)
 
 
+@traced("verification")
 def verify_citations(
     answer_text: str, hits: list[VectorStoreHit], judge: CitationJudgeProtocol
 ) -> list[CitationVerificationResult]:

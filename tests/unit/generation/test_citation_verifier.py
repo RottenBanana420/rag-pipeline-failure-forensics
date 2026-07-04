@@ -311,6 +311,26 @@ class TestVerifyCitations:
         assert results[1].supported is False
         assert len(judge.calls) == 1
 
+    def test_records_verification_span(self):
+        from src.tracing.context import collect_spans
+
+        hits = [make_hit(chunk_id="a", text="Paris is the capital of France.")]
+        judge = FakeJudge()
+        answer = "Paris is the capital [1]."
+
+        with collect_spans() as spans:
+            verify_citations(answer, hits, judge)
+
+        assert len(spans) == 1
+        assert spans[0].step == "verification"
+        assert spans[0].error is None
+
+    def test_noop_outside_collect_spans(self):
+        hits = [make_hit()]
+        judge = FakeJudge()
+
+        verify_citations("Some claim [1].", hits, judge)
+
 
 @pytest.fixture
 def anthropic_settings(monkeypatch, tmp_path):
