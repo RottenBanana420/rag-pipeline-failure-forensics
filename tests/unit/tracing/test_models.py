@@ -84,6 +84,14 @@ class TestSpanValidation:
         assert span.input == ""
         assert span.output == ""
 
+    def test_error_defaults_to_none(self):
+        span = Span(**_valid_span_kwargs())
+        assert span.error is None
+
+    def test_error_field_populated(self):
+        span = Span(**_valid_span_kwargs(error="RuntimeError: boom"))
+        assert span.error == "RuntimeError: boom"
+
     def test_round_trip_json(self):
         span = Span(**_valid_span_kwargs(confidence_score=5, token_count=100))
         restored = Span.model_validate_json(span.model_dump_json())

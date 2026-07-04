@@ -19,6 +19,7 @@ class Span(BaseModel):
     token_count: int | None = Field(default=None, ge=0)
     latency_ms: float = Field(ge=0.0)
     confidence_score: int | None = Field(default=None, ge=1, le=5)
+    error: str | None = None
 
 
 TraceStatus = Literal["success", "failure", "degraded"]
