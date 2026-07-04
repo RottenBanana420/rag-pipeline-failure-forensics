@@ -25,6 +25,7 @@ from src.generation.citation_verifier import (
     JudgeVerdict,
     build_judge_prompt,
 )
+from src.tracing.instrumentation import default_serialize, span
 
 if TYPE_CHECKING:
     from src.config import Settings
@@ -33,6 +34,12 @@ if TYPE_CHECKING:
 # against the installed openai SDK's ChatModel literal (v2.44.0): a current,
 # structured-outputs-capable dated snapshot model.
 DEFAULT_MODEL = "gpt-4o-2024-08-06"
+
+
+def _extract_token_count(completion: object) -> int | None:
+    usage = getattr(completion, "usage", None)
+    total_tokens = getattr(usage, "total_tokens", None)
+    return total_tokens if isinstance(total_tokens, int) else None
 
 
 class OpenAICitationJudge:
@@ -53,20 +60,27 @@ class OpenAICitationJudge:
     def judge(self, claim: str, evidence: str) -> JudgeVerdict:
         """Decide whether *evidence* supports *claim* and return a verdict."""
         prompt = build_judge_prompt(claim, evidence)
-        completion = self._client.chat.completions.parse(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": CITATION_JUDGE_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt.user},
-            ],
-            temperature=self._temperature,
-            response_format=JudgeVerdict,
-        )
-        message = completion.choices[0].message
-        parsed = message.parsed
-        if parsed is None:
-            raise RuntimeError(
-                f"OpenAI structured output returned no parsed result "
-                f"(model={self._model}, refusal={message.refusal!r})"
+        with span(
+            "verification",
+            input=default_serialize({"claim": claim, "evidence": evidence}),
+        ) as s:
+            s.llm_prompt = f"{CITATION_JUDGE_SYSTEM_PROMPT}\n\n{prompt.user}"
+            completion = self._client.chat.completions.parse(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": CITATION_JUDGE_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt.user},
+                ],
+                temperature=self._temperature,
+                response_format=JudgeVerdict,
             )
-        return parsed
+            s.token_count = _extract_token_count(completion)
+            message = completion.choices[0].message
+            parsed = message.parsed
+            if parsed is None:
+                raise RuntimeError(
+                    f"OpenAI structured output returned no parsed result "
+                    f"(model={self._model}, refusal={message.refusal!r})"
+                )
+            s.output = default_serialize(parsed)
+            return parsed

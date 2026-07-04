@@ -191,3 +191,33 @@ class TestOpenAICitationJudge:
                 match="OpenAI structured output returned no parsed result",
             ):
                 judge.judge(claim="claim", evidence="evidence")
+
+    def test_judge_records_span_with_prompt_and_token_count(self, settings):
+        from src.generation.providers.citation_judge_openai import OpenAICitationJudge
+        from src.tracing.context import collect_spans
+
+        completion = _mock_completion(supported=True, reasoning="Matches.")
+        completion.usage.total_tokens = 200
+
+        with patch("openai.OpenAI") as MockOpenAI:
+            MockOpenAI.return_value.chat.completions.parse.return_value = completion
+            judge = OpenAICitationJudge(settings)
+            with collect_spans() as spans:
+                judge.judge(claim="The sky is blue.", evidence="The sky appears blue.")
+
+        assert len(spans) == 1
+        recorded = spans[0]
+        assert recorded.step == "verification"
+        assert recorded.token_count == 200
+        assert "The sky is blue." in recorded.llm_prompt
+        assert recorded.error is None
+
+    def test_judge_noop_outside_collect_spans(self, settings):
+        from src.generation.providers.citation_judge_openai import OpenAICitationJudge
+
+        with patch("openai.OpenAI") as MockOpenAI:
+            MockOpenAI.return_value.chat.completions.parse.return_value = (
+                _mock_completion()
+            )
+            judge = OpenAICitationJudge(settings)
+            judge.judge(claim="c", evidence="e")

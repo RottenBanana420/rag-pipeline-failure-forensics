@@ -185,3 +185,36 @@ class TestAnthropicCitationJudge:
                 match="Anthropic structured output returned no parsed_output",
             ):
                 judge.judge(claim="claim", evidence="evidence")
+
+    def test_judge_records_span_with_prompt_and_token_count(self, settings):
+        from src.generation.providers.citation_judge_anthropic import (
+            AnthropicCitationJudge,
+        )
+        from src.tracing.context import collect_spans
+
+        resp = _mock_response(supported=True, reasoning="Matches.")
+        resp.usage.input_tokens = 120
+        resp.usage.output_tokens = 30
+
+        with patch("anthropic.Anthropic") as MockAnthropic:
+            MockAnthropic.return_value.messages.parse.return_value = resp
+            judge = AnthropicCitationJudge(settings)
+            with collect_spans() as spans:
+                judge.judge(claim="The sky is blue.", evidence="The sky appears blue.")
+
+        assert len(spans) == 1
+        recorded = spans[0]
+        assert recorded.step == "verification"
+        assert recorded.token_count == 150
+        assert "The sky is blue." in recorded.llm_prompt
+        assert recorded.error is None
+
+    def test_judge_noop_outside_collect_spans(self, settings):
+        from src.generation.providers.citation_judge_anthropic import (
+            AnthropicCitationJudge,
+        )
+
+        with patch("anthropic.Anthropic") as MockAnthropic:
+            MockAnthropic.return_value.messages.parse.return_value = _mock_response()
+            judge = AnthropicCitationJudge(settings)
+            judge.judge(claim="c", evidence="e")

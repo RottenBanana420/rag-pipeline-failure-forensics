@@ -24,6 +24,7 @@ from src.generation.citation_verifier import (
     JudgeVerdict,
     build_judge_prompt,
 )
+from src.tracing.instrumentation import default_serialize, span
 
 if TYPE_CHECKING:
     from src.config import Settings
@@ -32,6 +33,15 @@ if TYPE_CHECKING:
 # model list (anthropic.types.model.Model) as a current, non-deprecated
 # model string.
 DEFAULT_MODEL = "claude-sonnet-4-5"
+
+
+def _extract_token_count(response: object) -> int | None:
+    usage = getattr(response, "usage", None)
+    input_tokens = getattr(usage, "input_tokens", None)
+    output_tokens = getattr(usage, "output_tokens", None)
+    if isinstance(input_tokens, int) and isinstance(output_tokens, int):
+        return input_tokens + output_tokens
+    return None
 
 
 class AnthropicCitationJudge:
@@ -52,18 +62,25 @@ class AnthropicCitationJudge:
     def judge(self, claim: str, evidence: str) -> JudgeVerdict:
         """Decide whether *evidence* supports *claim* and return a verdict."""
         prompt = build_judge_prompt(claim, evidence)
-        response = self._client.messages.parse(
-            model=self._model,
-            max_tokens=1024,
-            system=CITATION_JUDGE_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt.user}],
-            temperature=self._temperature,
-            output_format=JudgeVerdict,
-        )
-        parsed = response.parsed_output
-        if parsed is None:
-            raise RuntimeError(
-                f"Anthropic structured output returned no parsed_output "
-                f"(model={self._model})"
+        with span(
+            "verification",
+            input=default_serialize({"claim": claim, "evidence": evidence}),
+        ) as s:
+            s.llm_prompt = f"{CITATION_JUDGE_SYSTEM_PROMPT}\n\n{prompt.user}"
+            response = self._client.messages.parse(
+                model=self._model,
+                max_tokens=1024,
+                system=CITATION_JUDGE_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt.user}],
+                temperature=self._temperature,
+                output_format=JudgeVerdict,
             )
-        return parsed
+            s.token_count = _extract_token_count(response)
+            parsed = response.parsed_output
+            if parsed is None:
+                raise RuntimeError(
+                    f"Anthropic structured output returned no parsed_output "
+                    f"(model={self._model})"
+                )
+            s.output = default_serialize(parsed)
+            return parsed
