@@ -15,9 +15,8 @@ class TestSpanContextManager:
         # No assertion target — just must not raise.
 
     def test_records_span_into_active_sink(self):
-        with collect_spans() as spans:
-            with span("retrieval", input="q") as s:
-                s.output = "result"
+        with collect_spans() as spans, span("retrieval", input="q") as s:
+            s.output = "result"
 
         assert len(spans) == 1
         recorded = spans[0]
@@ -27,37 +26,36 @@ class TestSpanContextManager:
         assert recorded.error is None
 
     def test_measures_latency(self):
-        with collect_spans() as spans:
-            with span("retrieval", input="q") as s:
-                time.sleep(0.01)
-                s.output = "result"
+        with collect_spans() as spans, span("retrieval", input="q") as s:
+            time.sleep(0.01)
+            s.output = "result"
 
         assert spans[0].latency_ms >= 10.0
 
     def test_captures_llm_prompt_and_token_count(self):
-        with collect_spans() as spans:
-            with span("verification", input="claim") as s:
-                s.llm_prompt = "system + user prompt"
-                s.token_count = 42
-                s.output = "verdict"
+        with collect_spans() as spans, span("verification", input="claim") as s:
+            s.llm_prompt = "system + user prompt"
+            s.token_count = 42
+            s.output = "verdict"
 
         assert spans[0].llm_prompt == "system + user prompt"
         assert spans[0].token_count == 42
 
     def test_exception_is_recorded_and_reraised(self):
-        with collect_spans() as spans:
-            with pytest.raises(RuntimeError, match="boom"):
-                with span("generation", input="q"):
-                    raise RuntimeError("boom")
+        with (
+            collect_spans() as spans,
+            pytest.raises(RuntimeError, match="boom"),
+            span("generation", input="q"),
+        ):
+            raise RuntimeError("boom")
 
         assert len(spans) == 1
         assert spans[0].error == "RuntimeError: boom"
         assert spans[0].output == ""
 
     def test_no_sink_still_reraises_exception(self):
-        with pytest.raises(RuntimeError, match="boom"):
-            with span("generation", input="q"):
-                raise RuntimeError("boom")
+        with pytest.raises(RuntimeError, match="boom"), span("generation", input="q"):
+            raise RuntimeError("boom")
 
     def test_multiple_spans_append_in_order(self):
         with collect_spans() as spans:
