@@ -1,5 +1,65 @@
 # Architecture Overview
 
+## 2026-07-04 — Phase 3: Span Instrumentation (Complete)
+
+### Wrapping Pipeline Steps in Spans
+
+`src/tracing/context.py` and `src/tracing/instrumentation.py` give every
+retrieval and generation function a way to record itself as a `Span`
+without needing an orchestrator yet:
+
+- **`collect_spans()`** (`context.py`) — a context manager holding a
+  `ContextVar[list[Span] | None]`. Instrumented calls append their
+  completed span to whichever list is active; outside any `collect_spans()`
+  block, instrumentation is a no-op.
+- **`span(step, input)`** (`instrumentation.py`) — a context manager for
+  sites needing to attach detail mid-function (LLM prompt, token count)
+  that a decorator can't infer from arguments/return value alone. Used
+  directly inside each judge provider's `judge()` method.
+- **`traced(step)`** (`instrumentation.py`) — a decorator built on `span()`
+  that auto-serializes a function's bound arguments (`self` excluded) and
+  return value. Applied as one line above each simpler pipeline function.
+  Typed with `ParamSpec`/`TypeVar` (`Callable[[Callable[P, T]], Callable[P, T]]`)
+  rather than `Callable[..., Any]` — the untyped version tripped mypy
+  strict mode's "untyped decorator" error at the very first `@traced(...)`
+  call site, which would have needed a `# type: ignore` at every one of the
+  nine call sites this phase adds; the `ParamSpec` signature preserves the
+  wrapped function's real parameter and return types instead.
+
+Applied at:
+
+| Function | Step |
+|---|---|
+| `DenseRetriever.retrieve`, `SparseRetriever.retrieve`, `reciprocal_rank_fusion` | `retrieval` |
+| `SentenceTransformersReranker.rerank`, `CohereReranker.rerank`, `VoyageReranker.rerank` | `ranking` |
+| `verify_citations`, `AnthropicCitationJudge.judge`, `OpenAICitationJudge.judge` | `verification` |
+| `score_confidence`, `AnthropicCompletenessJudge.judge`, `OpenAICompletenessJudge.judge`, `build_fallback_response` | `generation` |
+
+`HybridRetriever.retrieve` itself is not separately wrapped — `Span` has no
+parent/child relationship, so instrumenting both it and the four leaf calls
+it makes would add a redundant, duplicate `retrieval`-step span.
+
+`Span.confidence_score` is left unset by every function above: none of them
+produce a discrete 1–5 rating today (retrieval similarity and
+`ConfidenceScore.composite` are continuous 0–1 floats) — populating it is a
+future orchestrator's decision.
+
+**Public API:**
+
+```python
+from src.tracing.context import collect_spans
+
+with collect_spans() as spans:
+    hits = dense_retriever.retrieve("What is RRF?")
+    reranked = reranker.rerank("What is RRF?", hits, top_n=5)
+# spans now holds a Span for the retrieve() call and one for the rerank() call
+```
+
+Still no orchestrator exists to assemble these into a `Trace` per request,
+or a JSON/SQLite writer to persist one — those remain future tasks.
+
+---
+
 ## 2026-07-04 — Phase 3: Trace/Span Data Models (Complete)
 
 ### The Record of What Happened
