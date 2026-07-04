@@ -12,6 +12,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from src.retrieval.models import VectorStoreHit
+from src.tracing.instrumentation import traced
 
 if TYPE_CHECKING:
     from src.config import Settings
@@ -40,6 +41,7 @@ class VoyageReranker:
         """Provider identifier including model name, e.g. ``"voyage/rerank-2.5"``."""
         return f"voyage/{self._model}"
 
+    @traced("ranking")
     def rerank(
         self, query: str, hits: list[VectorStoreHit], top_n: int
     ) -> list[VectorStoreHit]:
