@@ -21,13 +21,24 @@ logger = logging.getLogger(__name__)
 class SentenceTransformersReranker:
     """Reranking provider backed by a ``sentence-transformers`` CrossEncoder."""
 
-    def __init__(self, model_name: str = DEFAULT_MODEL, device: str | None = None) -> None:
+    def __init__(
+        self, model_name: str = DEFAULT_MODEL, device: str | None = None
+    ) -> None:
+        import torch
         from sentence_transformers import (
             CrossEncoder,  # lazy import — not at module level
         )
 
         self._model_name = model_name
-        self._model = CrossEncoder(model_name, device=device)
+        # ms-marco-MiniLM-L6-v2 (and other CrossEncoders trained without an
+        # activation) return raw, unbounded logits from predict() by default.
+        # Forcing a sigmoid keeps `similarity` in [0, 1], matching the bounded
+        # relevance scores the Cohere/Voyage rerankers already return and the
+        # cosine-similarity semantics the rest of VectorStoreHit assumes —
+        # score_confidence's retrieval_confidence averages this field directly.
+        self._model = CrossEncoder(
+            model_name, device=device, activation_fn=torch.nn.Sigmoid()
+        )
         logger.info(
             "SentenceTransformersReranker loaded model=%s device=%s",
             model_name,
@@ -47,5 +58,7 @@ class SentenceTransformersReranker:
             return []
         pairs = [(query, hit.text) for hit in hits]
         scores = self._model.predict(pairs)
-        scored = sorted(zip(hits, scores, strict=True), key=lambda pair: pair[1], reverse=True)
+        scored = sorted(
+            zip(hits, scores, strict=True), key=lambda pair: pair[1], reverse=True
+        )
         return [replace(hit, similarity=float(score)) for hit, score in scored[:top_n]]

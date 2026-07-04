@@ -5,6 +5,22 @@ from __future__ import annotations
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _no_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never let the repo's real .env leak into Settings() in any test.
+
+    pydantic-settings' dotenv source reads .env independently of os.environ,
+    so a real .env (e.g. with a live ANTHROPIC_API_KEY or non-default judge
+    models) would otherwise silently override field defaults in tests that
+    only monkeypatch a handful of specific vars. Disabling env_file makes
+    every test see field defaults plus exactly what it explicitly sets via
+    monkeypatch.setenv — regardless of what's actually in .env.
+    """
+    from src.config import Settings
+
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+
+
 @pytest.fixture()
 def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Strip any real env vars so tests use field defaults or explicit overrides.
@@ -14,6 +30,10 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     for var in [
         "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "VOYAGE_API_KEY",
+        "GEMINI_API_KEY",
+        "COHERE_API_KEY",
         "EMBEDDING_MODEL",
         "CHROMA_PERSIST_DIR",
         "DENSE_TOP_K",
@@ -32,5 +52,14 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "CHUNK_SIZE",
         "CHUNK_OVERLAP",
         "SEMANTIC_BREAKPOINT_PERCENTILE",
+        "CITATION_JUDGE_PROVIDER",
+        "CITATION_JUDGE_MODEL",
+        "CITATION_JUDGE_TEMPERATURE",
+        "ANSWER_COMPLETENESS_JUDGE_PROVIDER",
+        "ANSWER_COMPLETENESS_JUDGE_MODEL",
+        "ANSWER_COMPLETENESS_JUDGE_TEMPERATURE",
+        "CONFIDENCE_RETRIEVAL_WEIGHT",
+        "CONFIDENCE_CITATION_WEIGHT",
+        "CONFIDENCE_COMPLETENESS_WEIGHT",
     ]:
         monkeypatch.delenv(var, raising=False)

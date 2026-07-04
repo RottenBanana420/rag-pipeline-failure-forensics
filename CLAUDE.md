@@ -228,3 +228,9 @@ CONFIDENCE_RETRIEVAL_WEIGHT=    # Weight for retrieval confidence in the composi
 CONFIDENCE_CITATION_WEIGHT=     # Weight for citation coverage in the composite score (default: 0.3333...)
 CONFIDENCE_COMPLETENESS_WEIGHT= # Weight for answer completeness in the composite score (default: 0.3333...)
 ```
+
+## LLM Judge Cost Management
+
+`CITATION_JUDGE_MODEL` and `ANSWER_COMPLETENESS_JUDGE_MODEL` default to `claude-sonnet-4-5` ($3/$15 per MTok in/out). For iterative dev/test runs, set both to `claude-haiku-4-5` (~5x cheaper on output, the dominant cost) — reserve Sonnet for occasional accuracy-checkpoint runs. A Claude Pro/Max subscription does **not** cover API usage; API calls need a separate console.anthropic.com key with its own billing.
+
+**Testing cadence on real data:** run a small batch (10–20 questions) any time `generation/` changes or a new orchestrator step is wired in; run a fuller batch (100+) once per phase completion (end of Phase 2, 3, 4, 6). There's no CI spending real API money and no eval-runner yet (`scripts/run_eval.py` is a Phase 6 stub), so these are manual checkpoints, not per-commit gates.

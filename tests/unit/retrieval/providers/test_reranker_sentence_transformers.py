@@ -156,7 +156,12 @@ class TestSentenceTransformersReranker:
         ) as mock_ctor:
             SentenceTransformersReranker()
 
-        mock_ctor.assert_called_once_with(DEFAULT_MODEL, device=None)
+        args, kwargs = mock_ctor.call_args
+        assert args == (DEFAULT_MODEL,)
+        assert kwargs["device"] is None
+        import torch
+
+        assert isinstance(kwargs["activation_fn"], torch.nn.Sigmoid)
 
     def test_device_passed_through(self):
         from src.retrieval.providers.reranker_sentence_transformers import (
@@ -169,7 +174,12 @@ class TestSentenceTransformersReranker:
         ) as mock_ctor:
             SentenceTransformersReranker(device="cpu")
 
-        mock_ctor.assert_called_once_with(DEFAULT_MODEL, device="cpu")
+        args, kwargs = mock_ctor.call_args
+        assert args == (DEFAULT_MODEL,)
+        assert kwargs["device"] == "cpu"
+        import torch
+
+        assert isinstance(kwargs["activation_fn"], torch.nn.Sigmoid)
 
     def test_logs_resolved_device(self, caplog):
         import logging
@@ -187,7 +197,8 @@ class TestSentenceTransformersReranker:
             SentenceTransformersReranker()
 
         assert any(
-            "cross-encoder/ms-marco-MiniLM-L6-v2" in record.message and "cpu" in record.message
+            "cross-encoder/ms-marco-MiniLM-L6-v2" in record.message
+            and "cpu" in record.message
             for record in caplog.records
         )
 

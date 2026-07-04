@@ -30,7 +30,9 @@ class TestMakeReranker:
 
         assert isinstance(result, SentenceTransformersReranker)
 
-    def test_sentence_transformers_provider_passes_device_none_when_auto(self, st_settings):
+    def test_sentence_transformers_provider_passes_device_none_when_auto(
+        self, st_settings
+    ):
         """settings.reranker_device defaults to "auto"; factory must translate that to
         device=None so the underlying library auto-detects CUDA/MPS/CPU itself."""
         from src.retrieval.reranker import make_reranker
@@ -41,7 +43,9 @@ class TestMakeReranker:
         ) as mock_ctor:
             make_reranker(st_settings)
 
-        mock_ctor.assert_called_once_with(st_settings.reranker_model, device=None)
+        args, kwargs = mock_ctor.call_args
+        assert args == (st_settings.reranker_model,)
+        assert kwargs["device"] is None
 
     def test_sentence_transformers_provider_passes_explicit_device(
         self, monkeypatch, tmp_path
@@ -59,7 +63,9 @@ class TestMakeReranker:
         ) as mock_ctor:
             make_reranker(settings)
 
-        mock_ctor.assert_called_once_with(settings.reranker_model, device="cpu")
+        args, kwargs = mock_ctor.call_args
+        assert args == (settings.reranker_model,)
+        assert kwargs["device"] == "cpu"
 
     def test_uses_settings_reranker_model(self, monkeypatch, tmp_path):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -75,7 +81,9 @@ class TestMakeReranker:
         ) as mock_ctor:
             result = make_reranker(settings)
 
-        mock_ctor.assert_called_once_with("cross-encoder/custom-model", device=None)
+        args, kwargs = mock_ctor.call_args
+        assert args == ("cross-encoder/custom-model",)
+        assert kwargs["device"] is None
         assert result._model_name == "cross-encoder/custom-model"
 
     def test_unknown_provider_raises_value_error(self, st_settings):
