@@ -242,10 +242,28 @@ class DocumentLoader:
 
 
 def _strip_markdown(text: str) -> str:
-    """Remove common Markdown syntax, leaving readable plaintext."""
+    """Remove common Markdown syntax, leaving readable plaintext.
+
+    Inline code content (e.g. `OPENAI_API_KEY`) is stashed behind a
+    placeholder immediately after code fences are removed, and restored only
+    at the very end — after every other rule (bold/italic, links, list
+    markers, HTML tags) has run. Otherwise an identifier's underscores would
+    be indistinguishable from italic-emphasis markers once the backticks
+    are gone (e.g. `OPENAI_API_KEY` would collapse to OPENAIAPIKEY, since
+    `_{1,3}([^_]+)_{1,3}` matches the "_API_" between the two underscores
+    with nothing to signal that content came from a code span).
+    """
     # Code fences
     text = re.sub(r"```[\s\S]*?```", "", text)
-    text = re.sub(r"`[^`]+`", lambda m: m.group(0)[1:-1], text)
+
+    code_spans: list[str] = []
+
+    def _stash_code(match: re.Match[str]) -> str:
+        code_spans.append(match.group(1))
+        return f"\x00{len(code_spans) - 1}\x00"
+
+    text = re.sub(r"`([^`]+)`", _stash_code, text)
+
     # Links and images
     text = re.sub(r"!\[([^\]]*)\]\([^\)]*\)", r"\1", text)
     text = re.sub(r"\[([^\]]+)\]\([^\)]*\)", r"\1", text)
@@ -261,6 +279,9 @@ def _strip_markdown(text: str) -> str:
     text = re.sub(r"^>\s?", "", text, flags=re.MULTILINE)
     # HTML tags that may appear in Markdown
     text = re.sub(r"<[^>]+>", "", text)
+
+    text = re.sub(r"\x00(\d+)\x00", lambda m: code_spans[int(m.group(1))], text)
+
     # Collapse excess blank lines
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text

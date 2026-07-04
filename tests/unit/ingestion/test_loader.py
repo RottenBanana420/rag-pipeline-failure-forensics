@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from src.config import Settings
-from src.ingestion.loader import DocumentLoader
+from src.ingestion.loader import DocumentLoader, _strip_markdown
 from tests.fixtures.create_pdf import create_sample_pdf
 
 FIXTURES = Path(__file__).parent.parent.parent / "fixtures"
@@ -70,6 +70,62 @@ class TestMarkdownLoader:
         empty = tmp_path / "empty.md"
         empty.write_text("")
         assert loader.load(empty) == []
+
+    def test_inline_code_identifiers_preserved(self, loader: DocumentLoader):
+        docs = loader.load(FIXTURES / "sample.md")
+        full_text = " ".join(d.text for d in docs)
+        assert "OPENAI_API_KEY" in full_text
+        assert "CHROMA_PERSIST_DIR" in full_text
+
+
+class TestStripMarkdown:
+    def test_inline_code_preserves_snake_case_identifier(self):
+        assert _strip_markdown("`OPENAI_API_KEY`") == "OPENAI_API_KEY"
+
+    def test_inline_code_preserves_another_identifier(self):
+        assert _strip_markdown("`CHROMA_PERSIST_DIR`") == "CHROMA_PERSIST_DIR"
+
+    def test_inline_code_in_list_item_preserved(self):
+        result = _strip_markdown("- `OPENAI_API_KEY` — your OpenAI key")
+        assert result == "OPENAI_API_KEY — your OpenAI key"
+
+    def test_italic_underscore_still_stripped(self):
+        assert _strip_markdown("_italic text_") == "italic text"
+
+    def test_italic_asterisk_still_stripped(self):
+        assert _strip_markdown("*italic text*") == "italic text"
+
+    def test_bold_asterisk_still_stripped(self):
+        assert _strip_markdown("**bold text**") == "bold text"
+
+    def test_bold_underscore_still_stripped(self):
+        assert _strip_markdown("__bold text__") == "bold text"
+
+    def test_code_fence_still_removed(self):
+        assert _strip_markdown("```python\ncode\n```") == ""
+
+    def test_link_still_stripped_to_text(self):
+        result = _strip_markdown("[link text](http://example.com)")
+        assert result == "link text"
+
+    def test_image_still_stripped_to_alt_text(self):
+        result = _strip_markdown("![alt text](http://example.com/img.png)")
+        assert result == "alt text"
+
+    def test_list_marker_still_stripped(self):
+        assert _strip_markdown("- item one") == "item one"
+
+    def test_numbered_list_marker_still_stripped(self):
+        assert _strip_markdown("1. item one") == "item one"
+
+    def test_blockquote_marker_still_stripped(self):
+        assert _strip_markdown("> quoted") == "quoted"
+
+    def test_html_tag_still_stripped(self):
+        assert _strip_markdown("<b>bold</b>") == "bold"
+
+    def test_horizontal_rule_still_stripped(self):
+        assert _strip_markdown("---") == ""
 
 
 class TestTextLoader:
