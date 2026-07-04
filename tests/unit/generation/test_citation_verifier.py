@@ -331,6 +331,53 @@ class TestVerifyCitations:
 
         verify_citations("Some claim [1].", hits, judge)
 
+    def test_judge_span_nests_with_wrapper_span(self):
+        """Regression pin for the documented intentional-nesting decision.
+
+        Real judge providers (AnthropicCitationJudge/OpenAICitationJudge)
+        each open their own `span("verification", ...)` inside `judge()`.
+        `FakeJudge` is span-silent, so it can't reproduce that nesting —
+        this test uses a small local fake that *does* emit a span, proving
+        `verify_citations`'s own `@traced("verification")` wrapper span
+        coexists with the judge's inner span rather than colliding or
+        silently replacing it. See docs/DECISIONS.md:
+        "verify_citations/score_confidence's wrapper spans nest with their
+        judge spans, unlike HybridRetriever — and that's intentional".
+        """
+        from src.tracing.context import collect_spans
+        from src.tracing.instrumentation import span
+
+        class SpanEmittingFakeJudge:
+            """Fake judge that mimics a real provider by opening its own span."""
+
+            def judge(self, claim: str, evidence: str) -> JudgeVerdict:
+                with span(
+                    "verification", input=f"claim={claim!r} evidence={evidence!r}"
+                ) as s:
+                    verdict = JudgeVerdict(supported=True, reasoning="Canned verdict.")
+                    s.output = verdict.reasoning
+                    return verdict
+
+            @property
+            def provider_id(self) -> str:
+                return "fake-span-emitting/v1"
+
+        hits = [make_hit(chunk_id="a", text="Paris is the capital of France.")]
+        judge = SpanEmittingFakeJudge()
+        answer = "Paris is the capital [1]."
+
+        with collect_spans() as spans:
+            verify_citations(answer, hits, judge)
+
+        verification_spans = [s for s in spans if s.step == "verification"]
+        assert len(verification_spans) >= 2
+
+        wrapper_spans = [s for s in verification_spans if "answer_text" in s.input]
+        judge_spans = [s for s in verification_spans if "claim=" in s.input]
+        assert len(wrapper_spans) == 1
+        assert len(judge_spans) == 1
+        assert wrapper_spans[0] is not judge_spans[0]
+
 
 @pytest.fixture
 def anthropic_settings(monkeypatch, tmp_path):

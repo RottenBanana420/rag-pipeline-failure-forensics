@@ -39,6 +39,15 @@ Applied at:
 parent/child relationship, so instrumenting both it and the four leaf calls
 it makes would add a redundant, duplicate `retrieval`-step span.
 
+By contrast, `verify_citations` and `score_confidence` keep their outer
+`@traced` wrapper *even though* each judge call they make opens its own
+inner span at the same step (`"verification"`/`"generation"`) — unlike
+`HybridRetriever`, both functions do real work (short-circuit logic,
+arithmetic) that no judge span ever records, so the outer span isn't
+redundant. See the `DECISIONS.md` entry "`verify_citations`/`score_confidence`'s
+wrapper spans nest with their judge spans, unlike `HybridRetriever`" for the
+full rationale.
+
 `Span.confidence_score` is left unset by every function above: none of them
 produce a discrete 1–5 rating today (retrieval similarity and
 `ConfidenceScore.composite` are continuous 0–1 floats) — populating it is a
