@@ -187,3 +187,36 @@ class TestAnthropicCompletenessJudge:
                 match="Anthropic structured output returned no parsed_output",
             ):
                 judge.judge(question="q", answer="a")
+
+    def test_judge_records_span_with_prompt_and_token_count(self, settings):
+        from src.generation.providers.completeness_judge_anthropic import (
+            AnthropicCompletenessJudge,
+        )
+        from src.tracing.context import collect_spans
+
+        resp = _mock_response(complete=True, reasoning="Addresses both parts.")
+        resp.usage.input_tokens = 80
+        resp.usage.output_tokens = 20
+
+        with patch("anthropic.Anthropic") as MockAnthropic:
+            MockAnthropic.return_value.messages.parse.return_value = resp
+            judge = AnthropicCompletenessJudge(settings)
+            with collect_spans() as spans:
+                judge.judge(question="What is X?", answer="X is a thing.")
+
+        assert len(spans) == 1
+        recorded = spans[0]
+        assert recorded.step == "generation"
+        assert recorded.token_count == 100
+        assert "What is X?" in recorded.llm_prompt
+        assert recorded.error is None
+
+    def test_judge_noop_outside_collect_spans(self, settings):
+        from src.generation.providers.completeness_judge_anthropic import (
+            AnthropicCompletenessJudge,
+        )
+
+        with patch("anthropic.Anthropic") as MockAnthropic:
+            MockAnthropic.return_value.messages.parse.return_value = _mock_response()
+            judge = AnthropicCompletenessJudge(settings)
+            judge.judge(question="q", answer="a")

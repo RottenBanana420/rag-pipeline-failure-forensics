@@ -23,11 +23,21 @@ from src.generation.confidence_scorer import (
     CompletenessVerdict,
     build_completeness_judge_prompt,
 )
+from src.tracing.instrumentation import default_serialize, span
 
 if TYPE_CHECKING:
     from src.config import Settings
 
 DEFAULT_MODEL = "claude-sonnet-4-5"
+
+
+def _extract_token_count(response: object) -> int | None:
+    usage = getattr(response, "usage", None)
+    input_tokens = getattr(usage, "input_tokens", None)
+    output_tokens = getattr(usage, "output_tokens", None)
+    if isinstance(input_tokens, int) and isinstance(output_tokens, int):
+        return input_tokens + output_tokens
+    return None
 
 
 class AnthropicCompletenessJudge:
@@ -48,18 +58,25 @@ class AnthropicCompletenessJudge:
     def judge(self, question: str, answer: str) -> CompletenessVerdict:
         """Decide whether *answer* addresses every part of *question*."""
         prompt = build_completeness_judge_prompt(question, answer)
-        response = self._client.messages.parse(
-            model=self._model,
-            max_tokens=1024,
-            system=ANSWER_COMPLETENESS_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt.user}],
-            temperature=self._temperature,
-            output_format=CompletenessVerdict,
-        )
-        parsed = response.parsed_output
-        if parsed is None:
-            raise RuntimeError(
-                f"Anthropic structured output returned no parsed_output "
-                f"(model={self._model})"
+        with span(
+            "generation",
+            input=default_serialize({"question": question, "answer": answer}),
+        ) as s:
+            s.llm_prompt = f"{ANSWER_COMPLETENESS_SYSTEM_PROMPT}\n\n{prompt.user}"
+            response = self._client.messages.parse(
+                model=self._model,
+                max_tokens=1024,
+                system=ANSWER_COMPLETENESS_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt.user}],
+                temperature=self._temperature,
+                output_format=CompletenessVerdict,
             )
-        return parsed
+            s.token_count = _extract_token_count(response)
+            parsed = response.parsed_output
+            if parsed is None:
+                raise RuntimeError(
+                    f"Anthropic structured output returned no parsed_output "
+                    f"(model={self._model})"
+                )
+            s.output = default_serialize(parsed)
+            return parsed

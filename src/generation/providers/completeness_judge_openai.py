@@ -26,11 +26,18 @@ from src.generation.confidence_scorer import (
     CompletenessVerdict,
     build_completeness_judge_prompt,
 )
+from src.tracing.instrumentation import default_serialize, span
 
 if TYPE_CHECKING:
     from src.config import Settings
 
 DEFAULT_MODEL = "gpt-4o-2024-08-06"
+
+
+def _extract_token_count(completion: object) -> int | None:
+    usage = getattr(completion, "usage", None)
+    total_tokens = getattr(usage, "total_tokens", None)
+    return total_tokens if isinstance(total_tokens, int) else None
 
 
 class OpenAICompletenessJudge:
@@ -51,20 +58,27 @@ class OpenAICompletenessJudge:
     def judge(self, question: str, answer: str) -> CompletenessVerdict:
         """Decide whether *answer* addresses every part of *question*."""
         prompt = build_completeness_judge_prompt(question, answer)
-        completion = self._client.chat.completions.parse(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": ANSWER_COMPLETENESS_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt.user},
-            ],
-            temperature=self._temperature,
-            response_format=CompletenessVerdict,
-        )
-        message = completion.choices[0].message
-        parsed = message.parsed
-        if parsed is None:
-            raise RuntimeError(
-                f"OpenAI structured output returned no parsed result "
-                f"(model={self._model}, refusal={message.refusal!r})"
+        with span(
+            "generation",
+            input=default_serialize({"question": question, "answer": answer}),
+        ) as s:
+            s.llm_prompt = f"{ANSWER_COMPLETENESS_SYSTEM_PROMPT}\n\n{prompt.user}"
+            completion = self._client.chat.completions.parse(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": ANSWER_COMPLETENESS_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt.user},
+                ],
+                temperature=self._temperature,
+                response_format=CompletenessVerdict,
             )
-        return parsed
+            s.token_count = _extract_token_count(completion)
+            message = completion.choices[0].message
+            parsed = message.parsed
+            if parsed is None:
+                raise RuntimeError(
+                    f"OpenAI structured output returned no parsed result "
+                    f"(model={self._model}, refusal={message.refusal!r})"
+                )
+            s.output = default_serialize(parsed)
+            return parsed
