@@ -5,14 +5,18 @@ import functools
 import inspect
 import json
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import ParamSpec, TypeVar
 
 from pydantic import BaseModel
 
 from src.tracing.context import _active_sink
 from src.tracing.models import PipelineStep, Span
+
+P = ParamSpec("P")
+T = TypeVar("T")
 
 
 @dataclass
@@ -90,7 +94,7 @@ def span(step: PipelineStep, input: str) -> Iterator[_SpanBuilder]:
             )
 
 
-def traced(step: PipelineStep):  # type: ignore[no-untyped-def]
+def traced(step: PipelineStep) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """Decorator: wrap a function/method so each call records a `Span`.
 
     Auto-serializes the call's bound arguments (`self` excluded, defaults
@@ -100,11 +104,11 @@ def traced(step: PipelineStep):  # type: ignore[no-untyped-def]
     directly instead.
     """
 
-    def decorator(func):  # type: ignore[no-untyped-def]
+    def decorator(func: Callable[P, T]) -> Callable[P, T]:
         sig = inspect.signature(func)
 
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             bound = sig.bind(*args, **kwargs)
             bound.apply_defaults()
             arguments = dict(bound.arguments)
