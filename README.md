@@ -23,7 +23,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 |-------|-------|--------|
 | 1 | Ingestion, Chunking, Hybrid Retrieval | Done |
 | 2 | Generation with Citations | In Progress |
-| 3 | Tracing & Instrumentation | Planned |
+| 3 | Tracing & Instrumentation | In Progress |
 | 4 | Backward Failure Analysis | Planned |
 | 5 | Visual Explorers & Frontend | Planned |
 | 6 | Evaluation Framework | Planned |
@@ -54,3 +54,12 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | Citation verification (LLM-as-judge per citation, Anthropic/OpenAI) | Done |
 | Answer confidence scorer | Done |
 | Graceful "I don't know" handling below confidence threshold | Done |
+
+### Phase 3 Progress
+
+| Component | Status |
+|-----------|--------|
+| Trace/Span pydantic data models | Done |
+| Context manager / decorator to instrument pipeline steps | Planned |
+| JSON trace file writer | Planned |
+| SQLite trace index | Planned |

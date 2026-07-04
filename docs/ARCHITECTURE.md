@@ -1,5 +1,52 @@
 # Architecture Overview
 
+## 2026-07-04 — Phase 3: Trace/Span Data Models (Complete)
+
+### The Record of What Happened
+
+`Span` and `Trace` (`src/tracing/models.py`) are the data model a future context manager/decorator will populate as pipeline steps run, and a future JSON/SQLite writer will persist. This entry covers only the models — no instrumentation exists yet to construct them automatically.
+
+**`Span`** — one pipeline step's record:
+
+| Field | Type | Description |
+|-------|------|--------------|
+| `span_id` | `str` | Auto-generated UUID4 hex, unique per instance |
+| `step` | `Literal["ingestion", "retrieval", "ranking", "generation", "verification"]` | Which pipeline stage produced this span |
+| `input` | `str` | Serialized step input — serialization itself is the future decorator's job |
+| `output` | `str` | Serialized step output |
+| `llm_prompt` | `str \| None` | The prompt sent, if this step called an LLM |
+| `token_count` | `int \| None` | `>= 0`; `None` for non-LLM steps |
+| `latency_ms` | `float` | `>= 0.0` |
+| `confidence_score` | `int \| None` | `1-5`; optional because not every step naturally produces one (e.g. ingestion) |
+
+**`Trace`** — the complete record for one request:
+
+| Field | Type | Description |
+|-------|------|--------------|
+| `trace_id` | `str` | Auto-generated UUID4 hex, unique per instance |
+| `spans` | `list[Span]` | Defaults to `[]`; a future context manager appends as steps complete |
+| `final_output` | `str \| None` | Defaults to `None` (e.g. a failed request may never produce output) |
+| `status` | `Literal["success", "failure", "degraded"]` | Required, no default — callers must state the outcome explicitly |
+
+**Public API:**
+
+```python
+from src.tracing.models import Span, Trace
+
+span = Span(step="retrieval", input='{"question": "..."}', output='{"hits": [...]}', latency_ms=12.5)
+trace = Trace(spans=[span], final_output="The answer is 42.", status="success")
+
+# Round-trips for the future JSON/SQLite writers:
+restored = Trace.model_validate_json(trace.model_dump_json())
+```
+
+**Design notes:**
+- Both are plain (non-frozen) pydantic `BaseModel`s, matching `ProcessedDocument`/`Chunk` in `src/ingestion/models.py` — not the frozen-dataclass convention used for judge-free result values (`FallbackResponse`, `ConfidenceScore`) — because they need free JSON serialization for the not-yet-built writers, the same rationale `ProcessedDocument`/`Chunk` already established.
+- `step` and `status` are closed `Literal`s, matching `ChunkingStrategy`'s convention, since both sets are fixed by the project spec.
+- Standalone models only — the context manager, decorator, and JSON/SQLite writers described in the project spec are future work, same situation as every Phase 2 generation module before an orchestrator exists.
+
+---
+
 ## 2026-07-04 — Phase 2: Graceful Fallback for Low Retrieval Confidence (Complete)
 
 ### Structured "Insufficient Information" Response
@@ -475,8 +522,10 @@ src/
                       # DenseRetriever, SparseRetriever, VectorStoreHit (complete)
                       # reciprocal_rank_fusion, HybridRetriever (complete)
                       # RerankerProtocol/make_reranker, SentenceTransformersReranker (complete)
-  generation/         # Grounded prompt, citation parser/verifier, confidence scorer [planned]
-  tracing/            # Trace/Span models, context manager, decorator, JSON+SQLite writers [planned]
+  generation/         # Grounded prompt, citation parser/verifier, confidence scorer, fallback
+                      # response (complete; no generation orchestrator wiring them together yet)
+  tracing/            # Trace/Span models (complete); context manager, decorator, JSON+SQLite
+                      # writers [planned]
   analysis/           # Backward trace walker, failure categorizer, evidence chain builder [planned]
   evaluation/         # Golden dataset runner, metric calculators, regression tracker [planned]
   api/                # FastAPI app, route handlers [planned]

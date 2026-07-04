@@ -121,7 +121,9 @@ src/
                       # check of ConfidenceScore.retrieval_confidence against a threshold; returns a
                       # FallbackResponse with what was retrieved and which documents to check
                       # manually, or None if confidence is sufficient)
-  tracing/            # Trace/Span models, context manager, decorator, JSON + SQLite writers
+  tracing/            # models.py — Trace/Span pydantic models (PipelineStep/TraceStatus Literals),
+                      # complete
+                      # context manager, decorator, JSON + SQLite writers — planned
   analysis/           # Backward trace walker, failure categorizer, evidence chain builder
   evaluation/         # Golden dataset runner, metric calculators, regression tracker
   api/                # FastAPI app, route handlers (/ask, /flag, /ingest, /documents)
@@ -160,6 +162,8 @@ data/
 **Deduplication:** Before inserting, cosine similarity is checked against existing chunks. Chunks with similarity > 0.95 are skipped.
 
 **Provider abstraction:** Embedding and vector-store backends are chosen at runtime via `EMBEDDING_PROVIDER`/`VECTOR_STORE_PROVIDER` env vars, resolved through `make_embedder`/`make_vector_store` factories against `EmbedderProtocol`/`VectorStoreProtocol`. Provider SDKs are imported lazily inside the factory (not at module level) so installing one provider's extra doesn't require the others. On first write, `ChromaVectorStore` stamps the collection metadata with the embedder's `provider_id` and dimension count; on later opens it refuses to proceed if the configured provider doesn't match, instead of silently corrupting the index.
+
+**Trace/Span data models:** `Span` and `Trace` (`src/tracing/models.py`) are the record that a future context manager/decorator will populate. `Span` has `span_id` (auto UUID4 hex), `step` (closed `Literal["ingestion", "retrieval", "ranking", "generation", "verification"]`), `input`/`output` (`str` — already-serialized by the future decorator, not typed as the raw pipeline objects), `llm_prompt` (optional), `token_count` (optional, `>= 0`), `latency_ms` (`>= 0.0`), and `confidence_score` (optional, `1-5` — optional because not every step naturally produces one, e.g. ingestion). `Trace` has `trace_id` (auto UUID4 hex), `spans` (defaults to `[]`), `final_output` (optional), and `status` (closed `Literal["success", "failure", "degraded"]`, required with no default — the object represents the completed record of what happened, so callers must state the outcome explicitly). Both are plain (non-frozen) pydantic `BaseModel`s, matching `ProcessedDocument`/`Chunk` in `src/ingestion/models.py` rather than the frozen-dataclass convention used for judge-free result values (`FallbackResponse`, `ConfidenceScore`) — pydantic gives free JSON serialization, which the not-yet-built JSON/SQLite writers will need. Like the rest of Phase 2's generation modules, this is a standalone unit: no context manager, decorator, or writer exists yet to construct or persist these automatically.
 
 **Tracing instrumentation:** A decorator pattern wraps any pipeline function in a span automatically. The span records the step name, serialized input/output, LLM prompt (if applicable), token count, latency, and confidence score. This means adding observability to a new step is one line of code.
 

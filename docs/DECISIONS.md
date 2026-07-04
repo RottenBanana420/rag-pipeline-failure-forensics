@@ -1,5 +1,19 @@
 # Architecture Decision Records
 
+## 2026-07-04 — Trace/Span Data Models
+
+**Plain (non-frozen) pydantic `BaseModel`, not the frozen-dataclass convention used for `FallbackResponse`/`ConfidenceScore`** — Every other judge-free result type in this codebase (`FallbackResponse`, `CitationVerificationResult`) is a frozen `@dataclass`, since none of them are ever handed to an LLM SDK or need to cross a process boundary. `Trace`/`Span` are different: they're the record a future JSON file writer and SQLite indexer will persist, so they need reliable JSON (de)serialization. `ProcessedDocument`/`Chunk` in `src/ingestion/models.py` face the identical requirement and are already plain pydantic models for the same reason — `Trace`/`Span` follow that precedent rather than the frozen-dataclass one.
+
+**Closed `Literal`s for `step` and `status`, not open `str`** — Matches `ChunkingStrategy`'s existing convention (`src/ingestion/models.py`) for enumerations that are fixed by the project spec: the five pipeline steps (ingestion/retrieval/ranking/generation/verification) and three trace statuses (success/failure/degraded) are named explicitly in the spec, so a typo should fail validation immediately rather than silently producing an uncategorizable trace or span.
+
+**`Span.confidence_score` is optional (`1-5` when present), not required** — Not every pipeline step naturally produces a confidence score — an ingestion span has no LLM-judged output to score, while a generation or verification span might. Requiring it on every span would force non-scoring steps to supply a meaningless placeholder value.
+
+**`Trace.status` is required, with no default** — Unlike `Trace.spans` (defaults to `[]`) and `Trace.final_output` (defaults to `None`), `status` has no default. The object represents "the complete record of what happened" per the project spec's own phrasing — callers (the future context manager) must state the outcome explicitly once a request finishes, rather than the model silently assuming an optimistic default like `"success"`.
+
+**Standalone models, not wired into a context manager, decorator, or writer** — Same situation as every Phase 2 generation module before an orchestrator existed: `Trace`/`Span` are usable and fully tested today, but nothing yet constructs a `Span` automatically as pipeline steps run, appends it to a `Trace`, or persists the finished `Trace` to JSON/SQLite. Those are separate, later tasks in the tracing module.
+
+---
+
 ## 2026-07-04 — Graceful Fallback for Low Retrieval Confidence
 
 **Trigger on `retrieval_confidence`, not the composite score** — The composite mixes in citation coverage and answer completeness, either of which can be low for reasons that have nothing to do with whether the right documents were retrieved (e.g. the LLM under-cited a well-grounded answer). The project spec calls out "retrieval confidence" by name for this decision, so `build_fallback_response` takes `ConfidenceScore.retrieval_confidence` as an explicit parameter rather than `ConfidenceScore.composite`.
