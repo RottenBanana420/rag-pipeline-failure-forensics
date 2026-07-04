@@ -20,6 +20,11 @@ from src.generation.confidence_scorer import (
     make_completeness_judge,
     score_confidence,
 )
+from src.generation.fallback_response import (
+    FALLBACK_MESSAGE,
+    FallbackResponse,
+    build_fallback_response,
+)
 from src.generation.prompts import (
     GROUNDED_SYSTEM_PROMPT,
     INSUFFICIENT_CONTEXT_RESPONSE,
@@ -31,17 +36,20 @@ from src.generation.prompts import (
 __all__ = [
     "ANSWER_COMPLETENESS_SYSTEM_PROMPT",
     "CITATION_JUDGE_SYSTEM_PROMPT",
+    "FALLBACK_MESSAGE",
     "Citation",
     "CitationJudgeProtocol",
     "CitationVerificationResult",
     "CompletenessJudgeProtocol",
     "CompletenessVerdict",
     "ConfidenceScore",
+    "FallbackResponse",
     "GROUNDED_SYSTEM_PROMPT",
     "INSUFFICIENT_CONTEXT_RESPONSE",
     "GroundedPrompt",
     "JudgeVerdict",
     "build_completeness_judge_prompt",
+    "build_fallback_response",
     "build_grounded_prompt",
     "build_judge_prompt",
     "make_citation_judge",

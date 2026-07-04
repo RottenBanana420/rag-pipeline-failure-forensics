@@ -117,6 +117,10 @@ src/
                       # coverage, and LLM-judged answer completeness)
                       # providers/completeness_judge_anthropic.py, providers/completeness_judge_openai.py —
                       # LLM-as-judge answer-completeness checkers, same lazy-import factory pattern
+                      # fallback_response.py (build_fallback_response — deterministic, judge-free
+                      # check of ConfidenceScore.retrieval_confidence against a threshold; returns a
+                      # FallbackResponse with what was retrieved and which documents to check
+                      # manually, or None if confidence is sufficient)
   tracing/            # Trace/Span models, context manager, decorator, JSON + SQLite writers
   analysis/           # Backward trace walker, failure categorizer, evidence chain builder
   evaluation/         # Golden dataset runner, metric calculators, regression tracker
@@ -147,7 +151,9 @@ data/
 
 **Citation verification:** `verify_citations` (`src/generation/citation_verifier.py`) checks whether an LLM-generated answer's `[N]`-style citations are actually backed by the chunks they cite. `parse_citations` (`src/generation/citation_parser.py`) is a v1 regex heuristic — no sentence-boundary NLP — that finds contiguous `[N]` marker runs and pairs each with the claim text preceding it. For each parsed citation, `verify_citations` resolves the (1-indexed) chunk indices against the retrieved `VectorStoreHit`s; indices outside `1..len(hits)` are untrusted LLM output and short-circuit to an unsupported result without ever calling the judge. In-range citations get one `judge.judge(claim, evidence)` call each — no batching — via a `CitationJudgeProtocol` implementation chosen by `make_citation_judge(settings)` (same lazy-import factory pattern as `make_reranker`/`make_embedder`; `anthropic` or `openai`). The claim and evidence are wrapped in nonce-suffixed XML-style tags (`build_judge_prompt`, reusing `wrap_with_nonce` from the grounded-prompt module) so untrusted claim/evidence text can't forge a closing tag and break out of its block. This module is a standalone, directly-callable unit — the codebase has no generation orchestrator yet to wire it into automatically.
 
-**Confidence scoring:** `score_confidence` (`src/generation/confidence_scorer.py`) rates a generated answer on three dimensions and combines them into one composite score. Retrieval confidence is the mean `similarity` across the hits used for generation (`0.0` if none). Citation coverage is the fraction of `verify_citations`' results with `supported=True` (`0.0` if none). Answer completeness comes from one `CompletenessJudgeProtocol.judge(question, answer)` call — an LLM-as-judge deciding whether every part of the question was addressed — chosen by `make_completeness_judge(settings)`, the same lazy-import factory pattern as `make_citation_judge`/`make_reranker`/`make_embedder` (providers: `anthropic`, `openai`). The three dimensions combine via a plain weighted sum (`confidence_retrieval_weight`/`confidence_citation_weight`/`confidence_completeness_weight`, default equal thirds, unnormalized) — the same convention `reciprocal_rank_fusion` uses for `dense_weight`/`sparse_weight`. Like citation verification, this is a standalone, directly-callable unit — the codebase has no generation orchestrator yet to wire it into automatically, and this task does not implement the "below-threshold → I don't know" fallback described below; a future orchestrator decides what to do with a low score.
+**Confidence scoring:** `score_confidence` (`src/generation/confidence_scorer.py`) rates a generated answer on three dimensions and combines them into one composite score. Retrieval confidence is the mean `similarity` across the hits used for generation (`0.0` if none). Citation coverage is the fraction of `verify_citations`' results with `supported=True` (`0.0` if none). Answer completeness comes from one `CompletenessJudgeProtocol.judge(question, answer)` call — an LLM-as-judge deciding whether every part of the question was addressed — chosen by `make_completeness_judge(settings)`, the same lazy-import factory pattern as `make_citation_judge`/`make_reranker`/`make_embedder` (providers: `anthropic`, `openai`). The three dimensions combine via a plain weighted sum (`confidence_retrieval_weight`/`confidence_citation_weight`/`confidence_completeness_weight`, default equal thirds, unnormalized) — the same convention `reciprocal_rank_fusion` uses for `dense_weight`/`sparse_weight`. Like citation verification, this is a standalone, directly-callable unit — the codebase has no generation orchestrator yet to wire it into automatically, and this task does not decide when a low score should feed into generation — that composition is a future orchestrator's job.
+
+**Fallback response:** `build_fallback_response` (`src/generation/fallback_response.py`) checks `ConfidenceScore.retrieval_confidence` specifically (not the composite) against `settings.retrieval_confidence_threshold` (default `0.5`) — composite conflates citation/completeness quality with retrieval quality, and the spec calls out retrieval confidence by name. Below threshold (`retrieval_confidence < threshold`; at-or-above the threshold returns `None`, same `>=` convention `ChromaVectorStore` uses for its dedup check), it returns a frozen `FallbackResponse` (fixed `message`, a `retrieved_summary` line per hit, and deduped `documents_to_check` ranked by descending similarity, using `source_path` to disambiguate same-titled hits). No LLM call — deterministic, unlike the other two judge-backed dimensions. Same standalone-unit situation as citation verification and confidence scoring: no orchestrator exists yet to call this automatically.
 
 **Chunking strategies:** Three switchable strategies — fixed-size with overlap (baseline), recursive character splitting on section headers (structure-aware), and semantic chunking on embedding similarity. Each chunk stores which strategy produced it.
 
@@ -168,7 +174,7 @@ Three dimensions reported per answer:
 - **Citation coverage** — percentage of claims with verified citations
 - **Answer completeness** — whether all parts of the question were addressed
 
-If retrieval confidence is below threshold, the system returns a structured "I don't know" response rather than hallucinating.
+If retrieval confidence is below threshold, the system returns a structured "I don't know" response rather than hallucinating. See `build_fallback_response` in `src/generation/fallback_response.py`.
 
 ## Environment Variables
 
@@ -227,6 +233,10 @@ ANSWER_COMPLETENESS_JUDGE_TEMPERATURE= # Sampling temperature for the judge call
 CONFIDENCE_RETRIEVAL_WEIGHT=    # Weight for retrieval confidence in the composite score (default: 0.3333...)
 CONFIDENCE_CITATION_WEIGHT=     # Weight for citation coverage in the composite score (default: 0.3333...)
 CONFIDENCE_COMPLETENESS_WEIGHT= # Weight for answer completeness in the composite score (default: 0.3333...)
+
+# Fallback response (below this retrieval confidence, return a structured
+# "insufficient information" response instead of generating an answer)
+RETRIEVAL_CONFIDENCE_THRESHOLD= # Retrieval-confidence cutoff (default: 0.5)
 ```
 
 ## LLM Judge Cost Management

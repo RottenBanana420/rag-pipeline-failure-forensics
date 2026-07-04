@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     confidence_citation_weight: float = Field(default=1 / 3, ge=0.0)
     confidence_completeness_weight: float = Field(default=1 / 3, ge=0.0)
 
+    # Fallback response (below this retrieval confidence, return a
+    # structured "insufficient information" response instead of generating)
+    retrieval_confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+
     # Data directories
     raw_data_dir: Path = Field(default=Path("./data/raw"))
     processed_data_dir: Path = Field(default=Path("./data/processed"))

@@ -1,5 +1,40 @@
 # Architecture Overview
 
+## 2026-07-04 — Phase 2: Graceful Fallback for Low Retrieval Confidence (Complete)
+
+### Structured "Insufficient Information" Response
+
+`build_fallback_response` closes the last gap called out in the confidence-scoring entry below: deciding what to do with a low retrieval-confidence score. It checks `ConfidenceScore.retrieval_confidence` specifically — not the composite — against a new `settings.retrieval_confidence_threshold` (default `0.5`). The composite mixes in citation coverage and answer completeness, which can be low for reasons unrelated to whether the right documents were found; the project spec calls out retrieval confidence by name for this decision.
+
+Below threshold, it returns a frozen `FallbackResponse` instead of `None`:
+
+- `message` — fixed framing text (`FALLBACK_MESSAGE`), parallel to `INSUFFICIENT_CONTEXT_RESPONSE` in `src/generation/prompts.py`
+- `retrieved_summary` — one line per retrieved hit (title, section heading, similarity), or an explicit "nothing retrieved" line if `hits` is empty
+- `documents_to_check` — deduplicated document identifiers ("worth checking manually"), ordered by descending similarity; hits are identified by `title`, falling back to `"title (source_path)"` only when two hits share a title but different source paths
+
+No LLM call is involved — unlike citation coverage and answer completeness, this dimension only needs arithmetic over data already attached to `VectorStoreHit`, so it's deterministic and free to compute.
+
+**Public API:**
+
+```python
+from src.config import settings
+from src.generation import build_fallback_response, score_confidence
+
+score = score_confidence(query, answer_text, hits, citation_results, judge, ...)
+fallback = build_fallback_response(
+    hits, score.retrieval_confidence, settings.retrieval_confidence_threshold
+)
+if fallback is not None:
+    return fallback  # instead of the generated answer
+```
+
+**Design notes:**
+- `retrieval_confidence >= threshold` → `None` (proceed with generation); this matches the `>=` convention `ChromaVectorStore` already uses for its dedup check (`(1.0 - distances[0]) >= self._threshold`) rather than introducing a new comparison convention.
+- `FallbackResponse` is a frozen dataclass, not a pydantic `BaseModel` — there's no LLM structured-output call here to justify the pydantic convention used by `JudgeVerdict`/`CompletenessVerdict`.
+- Like citation verification and confidence scoring, this is a standalone, directly-callable unit — the codebase has no generation orchestrator yet to call it automatically after generation.
+
+---
+
 ## 2026-07-03 — Phase 2: Answer Confidence Scoring (Complete)
 
 ### Composite Confidence Score

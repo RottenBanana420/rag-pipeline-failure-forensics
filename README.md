@@ -53,4 +53,4 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | Grounded generation prompt (citation instructions, injection-hardened) | Done |
 | Citation verification (LLM-as-judge per citation, Anthropic/OpenAI) | Done |
 | Answer confidence scorer | Done |
-| Graceful "I don't know" handling below confidence threshold | Not started |
+| Graceful "I don't know" handling below confidence threshold | Done |

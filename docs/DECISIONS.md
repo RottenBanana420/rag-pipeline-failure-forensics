@@ -1,5 +1,19 @@
 # Architecture Decision Records
 
+## 2026-07-04 — Graceful Fallback for Low Retrieval Confidence
+
+**Trigger on `retrieval_confidence`, not the composite score** — The composite mixes in citation coverage and answer completeness, either of which can be low for reasons that have nothing to do with whether the right documents were retrieved (e.g. the LLM under-cited a well-grounded answer). The project spec calls out "retrieval confidence" by name for this decision, so `build_fallback_response` takes `ConfidenceScore.retrieval_confidence` as an explicit parameter rather than `ConfidenceScore.composite`.
+
+**No LLM call** — Unlike answer completeness, this decision only needs the similarity scores and metadata already attached to `VectorStoreHit` (mean similarity vs. a threshold, plus title/section/source_path for the summary). Making it a judge call would add latency and cost to answer the same question a threshold comparison already answers deterministically.
+
+**`FallbackResponse` is a frozen dataclass, not a pydantic `BaseModel`** — `JudgeVerdict`/`CompletenessVerdict` are pydantic models specifically because they're passed as `output_format=`/`response_format=` to LLM SDKs' structured-output APIs. `FallbackResponse` is never handed to an LLM, so it follows the codebase's default frozen-dataclass convention instead (matches `CitationVerificationResult`).
+
+**`>=` threshold convention, matching the existing dedup check** — `retrieval_confidence >= threshold` means "confident enough, proceed with generation" (returns `None`). This mirrors `ChromaVectorStore`'s duplicate check (`(1.0 - distances[0]) >= self._threshold`) rather than inventing a new boundary convention for thresholds in this codebase.
+
+**Fallback response is a standalone unit, not wired into a generation orchestrator** — Same situation as citation verification and confidence scoring: no code yet calls an LLM to produce the initial grounded answer, so callers are expected to compute a `ConfidenceScore` first and pass its `retrieval_confidence` in explicitly. It will be composed into an end-to-end `ask()` flow once that orchestrator exists.
+
+---
+
 ## 2026-07-03 — Answer Confidence Scoring
 
 **Boolean `complete`/`incomplete` verdict, mapped to `1.0`/`0.0`, rather than a continuous completeness score** — Matches the existing `JudgeVerdict.supported` boolean pattern from citation verification rather than asking the judge for a 1-5 or 0-1 score directly. A binary verdict is easier for an LLM judge to return consistently and easier to unit-test with canned fixtures than a continuous score whose exact numeric value would otherwise need its own calibration.
