@@ -67,6 +67,81 @@ class TestSpanContextManager:
         assert [s.step for s in spans] == ["retrieval", "ranking"]
 
 
+class TestTracedDecorator:
+    def test_preserves_return_value(self):
+        from src.tracing.instrumentation import traced
+
+        @traced("retrieval")
+        def retrieve(query: str) -> list[str]:
+            return [query, query]
+
+        assert retrieve("q") == ["q", "q"]
+
+    def test_records_span_with_serialized_args_and_result(self):
+        from src.tracing.instrumentation import traced
+
+        @traced("retrieval")
+        def retrieve(query: str, k: int = 10) -> list[str]:
+            return [query] * k
+
+        with collect_spans() as spans:
+            retrieve("q", k=2)
+
+        assert len(spans) == 1
+        assert spans[0].step == "retrieval"
+        assert '"query": "q"' in spans[0].input
+        assert '"k": 2' in spans[0].input
+        assert spans[0].output == '["q", "q"]'
+
+    def test_default_argument_captured_even_when_omitted(self):
+        from src.tracing.instrumentation import traced
+
+        @traced("retrieval")
+        def retrieve(query: str, k: int = 10) -> list[str]:
+            return [query] * k
+
+        with collect_spans() as spans:
+            retrieve("q")
+
+        assert '"k": 10' in spans[0].input
+
+    def test_excludes_self_from_serialized_input(self):
+        from src.tracing.instrumentation import traced
+
+        class Retriever:
+            @traced("retrieval")
+            def retrieve(self, query: str) -> str:
+                return query
+
+        with collect_spans() as spans:
+            Retriever().retrieve("q")
+
+        assert "self" not in spans[0].input
+        assert '"query": "q"' in spans[0].input
+
+    def test_propagates_exception_and_still_records_span(self):
+        from src.tracing.instrumentation import traced
+
+        @traced("generation")
+        def flaky() -> None:
+            raise ValueError("nope")
+
+        with collect_spans() as spans, pytest.raises(ValueError, match="nope"):
+            flaky()
+
+        assert len(spans) == 1
+        assert spans[0].error == "ValueError: nope"
+
+    def test_noop_outside_collect_spans(self):
+        from src.tracing.instrumentation import traced
+
+        @traced("retrieval")
+        def retrieve(query: str) -> str:
+            return query
+
+        assert retrieve("q") == "q"
+
+
 class TestDefaultSerialize:
     def test_serializes_plain_dict(self):
         result = default_serialize({"query": "q", "k": 5})

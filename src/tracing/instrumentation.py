@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
+import inspect
 import json
 import time
 from collections.abc import Iterator
@@ -86,3 +88,32 @@ def span(step: PipelineStep, input: str) -> Iterator[_SpanBuilder]:
                     error=error,
                 )
             )
+
+
+def traced(step: PipelineStep):  # type: ignore[no-untyped-def]
+    """Decorator: wrap a function/method so each call records a `Span`.
+
+    Auto-serializes the call's bound arguments (`self` excluded, defaults
+    applied) as `input` via `default_serialize`, and the return value as
+    `output`. For sites needing to attach LLM prompt/response/token detail
+    that isn't derivable from arguments/return value alone, use `span()`
+    directly instead.
+    """
+
+    def decorator(func):  # type: ignore[no-untyped-def]
+        sig = inspect.signature(func)
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
+            bound = sig.bind(*args, **kwargs)
+            bound.apply_defaults()
+            arguments = dict(bound.arguments)
+            arguments.pop("self", None)
+            with span(step, input=default_serialize(arguments)) as s:
+                result = func(*args, **kwargs)
+                s.output = default_serialize(result)
+                return result
+
+        return wrapper
+
+    return decorator
