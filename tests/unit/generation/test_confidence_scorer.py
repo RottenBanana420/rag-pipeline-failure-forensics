@@ -495,3 +495,44 @@ class TestScoreConfidence:
         judge = FakeCompletenessJudge()
 
         score_confidence("q", "a", [], [], judge)
+
+    def test_judge_span_nests_with_wrapper_span(self):
+        """Regression pin for the documented intentional-nesting decision.
+
+        Real judge providers (AnthropicCompletenessJudge/OpenAICompletenessJudge)
+        each open their own `span("generation", ...)` inside `judge()`.
+        `FakeCompletenessJudge` is span-silent, so it can't reproduce that
+        nesting — this test uses a small local fake that *does* emit a span,
+        proving `score_confidence`'s own `@traced("generation")` wrapper span
+        coexists with the judge's inner span rather than colliding or
+        silently replacing it. See docs/DECISIONS.md:
+        "verify_citations/score_confidence's wrapper spans nest with their
+        judge spans, unlike HybridRetriever — and that's intentional".
+        """
+        from src.tracing.context import collect_spans
+        from src.tracing.instrumentation import span
+
+        class SpanEmittingFakeCompletenessJudge:
+            """Fake judge that mimics a real provider by opening its own span."""
+
+            def judge(self, question: str, answer: str) -> CompletenessVerdict:
+                with span(
+                    "generation", input=f"question={question!r} answer={answer!r}"
+                ) as s:
+                    verdict = CompletenessVerdict(
+                        complete=True, reasoning="Canned verdict."
+                    )
+                    s.output = verdict.reasoning
+                    return verdict
+
+            @property
+            def provider_id(self) -> str:
+                return "fake-span-emitting/v1"
+
+        judge = SpanEmittingFakeCompletenessJudge()
+
+        with collect_spans() as spans:
+            score_confidence("q", "a", [make_hit()], [], judge)
+
+        generation_spans = [s for s in spans if s.step == "generation"]
+        assert len(generation_spans) >= 2
