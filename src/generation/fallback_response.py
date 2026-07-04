@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.retrieval.models import VectorStoreHit
+from src.tracing.instrumentation import traced
 
 FALLBACK_MESSAGE = (
     "I found some potentially related information, but not enough to "
@@ -54,6 +55,7 @@ def _document_label(hit: VectorStoreHit, *, ambiguous_titles: set[str]) -> str:
     return hit.title
 
 
+@traced("generation")
 def build_fallback_response(
     hits: list[VectorStoreHit],
     retrieval_confidence: float,

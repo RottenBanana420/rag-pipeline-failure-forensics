@@ -138,6 +138,34 @@ class TestBuildFallbackResponse:
             "Doc A (/docs/a2.md)",
         ]
 
+    def test_records_generation_span(self):
+        from src.tracing.context import collect_spans
+
+        hits = [make_hit(similarity=0.2)]
+
+        with collect_spans() as spans:
+            build_fallback_response(hits, retrieval_confidence=0.2, threshold=0.5)
+
+        assert len(spans) == 1
+        assert spans[0].step == "generation"
+        assert spans[0].error is None
+
+    def test_records_span_even_when_returning_none(self):
+        from src.tracing.context import collect_spans
+
+        hits = [make_hit(similarity=0.9)]
+
+        with collect_spans() as spans:
+            result = build_fallback_response(
+                hits, retrieval_confidence=0.9, threshold=0.5
+            )
+
+        assert result is None
+        assert len(spans) == 1
+
+    def test_noop_outside_collect_spans(self):
+        build_fallback_response([make_hit()], retrieval_confidence=0.9, threshold=0.5)
+
 
 class TestFallbackResponse:
     def test_is_frozen(self):
