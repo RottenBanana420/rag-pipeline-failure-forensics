@@ -1,5 +1,26 @@
 # Architecture Overview
 
+## 2026-07-05 — Phase 3: Trace Persistence — JSON Files + SQLite Index (Complete)
+
+### Writing and indexing completed traces
+
+`Trace` (`src/tracing/models.py`) gained two fields: `timestamp` (UTC-aware `datetime`, `default_factory`) and `final_score` (optional `float`, no `ge`/`le` bounds — `ConfidenceScore.composite`'s three weights are independently `Settings`-configurable and not validated to sum to 1, so the composite it's usually populated from isn't guaranteed to land in `[0,1]`).
+
+**`src/tracing/storage.py`** — `save_trace(trace, output_dir)` / `load_trace(trace_id, output_dir)` read/write one `{trace_id}.json` file per trace via `model_dump_json(indent=2)` / `model_validate_json()`, the same convention as `src/ingestion/storage.py`'s `save_processed`/`load_processed` — but deliberately *without* that function's `shutil.rmtree`: each trace is an independent file, and writing a new one must never delete previously written ones.
+
+**`src/tracing/index.py`** — a SQLite metadata index (raw stdlib `sqlite3`, no ORM; not a pluggable backend so no `Protocol`/factory) with one `traces` table: `trace_id` (PK), `timestamp`, `status`, `final_score`, and `trace_path` (not in the original task's literal column list, but required to actually resolve a metadata row back to its full JSON trace — otherwise the index can't do the one thing it exists for). `init_trace_index()`, `index_trace()` (`INSERT OR REPLACE`, idempotent per `trace_id`), `get_trace_record()`, `list_trace_records()` (filterable by `status`, ordered by `timestamp` desc). An internal `_connection()` context manager wraps `with conn:` (commits/rolls back) in `try/finally: conn.close()`, since `with conn:` alone never closes the connection (confirmed via the stdlib `sqlite3` docs). Timestamps are stored as `isoformat()` text and re-parsed by Pydantic on read, rather than via `sqlite3`'s built-in datetime adapters — sidesteps their deprecation in Python 3.12+.
+
+**`src/tracing/persistence.py`** — `persist_trace(trace, settings)` is the standalone entry point tying the two together: `save_trace` then `index_trace`, returning the JSON path. Same "directly-callable unit, no orchestrator" shape as `verify_citations`/`score_confidence`/`build_fallback_response` — it takes an already-assembled `Trace` rather than calling `collect_spans()` itself, since no per-request orchestrator exists yet to hand it one automatically.
+
+**Settings** gained `trace_output_dir` (default `./data/traces`) and `sqlite_db_path` (default `./data/traces.db`), matching the `raw_data_dir`/`processed_data_dir` convention.
+
+**Design notes:**
+- If `save_trace` succeeds but `index_trace` then raises, the exception propagates uncaught and the JSON file is left in place — it's the durable source of truth; a missing index row is repairable later by re-running `index_trace` against it, an already-deleted trace file is not.
+- No WAL mode or connection timeout configured for SQLite — each `index.py` call opens/closes its own short-lived connection. Acceptable today since nothing calls `persist_trace` concurrently (no request orchestrator exists yet); revisit if/when one does.
+- Superseded claims: the "Document Loader" entry's Module Layout snippet (2026-06-28, below) lists `tracing/` as "context manager, decorator, JSON+SQLite writers [planned]" and `data/traces/` as "[planned]" — both are now implemented by this entry.
+
+---
+
 ## 2026-07-05 — Phase 3: Confidence Scoring in Spans (Complete)
 
 ### Populating `Span.confidence_score`

@@ -63,6 +63,6 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | Context manager / decorator to instrument pipeline steps | Done |
 | Instrumentation applied across retrieval/generation pipeline | Done |
 | Confidence scoring (1-5) populated on retrieval/ranking/verification/generation spans | Done |
+| JSON trace file writer (`src/tracing/storage.py`) | Done |
+| SQLite trace index (`src/tracing/index.py`) | Done |
 | Trace-per-request orchestrator | Planned |
-| JSON trace file writer | Planned |
-| SQLite trace index | Planned |
