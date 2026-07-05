@@ -237,6 +237,36 @@ class TestSettingsSingleton:
         assert isinstance(settings, Settings)
 
 
+class TestTracingSettingsDefaults:
+    def test_trace_output_dir_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().trace_output_dir == Path("./data/traces")
+
+    def test_sqlite_db_path_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().sqlite_db_path == Path("./data/traces.db")
+
+
+class TestTracingSettingsOverrides:
+    def test_trace_output_dir_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("TRACE_OUTPUT_DIR", "/tmp/test-traces")
+        assert Settings().trace_output_dir == Path("/tmp/test-traces")
+
+    def test_sqlite_db_path_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("SQLITE_DB_PATH", "/tmp/test-traces.db")
+        assert Settings().sqlite_db_path == Path("/tmp/test-traces.db")
+
+
 class TestChunkingSettingsDefaults:
     def test_chunk_strategy_default(self, clean_env: None) -> None:
         from src.config import Settings

@@ -61,5 +61,7 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "CONFIDENCE_RETRIEVAL_WEIGHT",
         "CONFIDENCE_CITATION_WEIGHT",
         "CONFIDENCE_COMPLETENESS_WEIGHT",
+        "TRACE_OUTPUT_DIR",
+        "SQLITE_DB_PATH",
     ]:
         monkeypatch.delenv(var, raising=False)

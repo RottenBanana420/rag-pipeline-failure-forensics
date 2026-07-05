@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -27,6 +28,8 @@ TraceStatus = Literal["success", "failure", "degraded"]
 
 class Trace(BaseModel):
     trace_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     spans: list[Span] = Field(default_factory=list)
     final_output: str | None = None
     status: TraceStatus
+    final_score: float | None = None

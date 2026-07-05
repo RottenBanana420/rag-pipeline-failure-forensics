@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from pydantic import ValidationError
 
@@ -162,3 +164,28 @@ class TestTraceValidation:
         trace = Trace(spans=[span], status="degraded")
         restored = Trace.model_validate(trace.model_dump())
         assert restored == trace
+
+    def test_timestamp_auto_generated_and_utc_aware(self):
+        trace = Trace(**_valid_trace_kwargs())
+        assert trace.timestamp.tzinfo is not None
+        now = datetime.now(UTC)
+        assert now - trace.timestamp < timedelta(seconds=5)
+
+    def test_timestamp_explicit_value_accepted(self):
+        ts = datetime(2026, 1, 1, tzinfo=UTC)
+        trace = Trace(**_valid_trace_kwargs(timestamp=ts))
+        assert trace.timestamp == ts
+
+    def test_final_score_defaults_to_none(self):
+        trace = Trace(**_valid_trace_kwargs())
+        assert trace.final_score is None
+
+    def test_final_score_accepts_out_of_unit_range(self):
+        assert Trace(**_valid_trace_kwargs(final_score=1.4)).final_score == 1.4
+        assert Trace(**_valid_trace_kwargs(final_score=-0.2)).final_score == -0.2
+
+    def test_round_trip_json_with_timestamp_and_final_score(self):
+        trace = Trace(**_valid_trace_kwargs(final_score=0.82))
+        restored = Trace.model_validate_json(trace.model_dump_json())
+        assert restored == trace
+        assert restored.final_score == 0.82
