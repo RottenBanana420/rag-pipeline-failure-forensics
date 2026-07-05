@@ -5,7 +5,7 @@ import time
 import pytest
 
 from src.tracing.context import collect_spans
-from src.tracing.instrumentation import default_serialize, span
+from src.tracing.instrumentation import confidence_from_score, default_serialize, span
 
 
 class TestSpanContextManager:
@@ -141,6 +141,42 @@ class TestTracedDecorator:
 
         assert retrieve("q") == "q"
 
+    def test_no_confidence_fn_leaves_confidence_score_none(self):
+        from src.tracing.instrumentation import traced
+
+        @traced("retrieval")
+        def retrieve(query: str) -> str:
+            return query
+
+        with collect_spans() as spans:
+            retrieve("q")
+
+        assert spans[0].confidence_score is None
+
+    def test_confidence_fn_sets_confidence_score_from_result(self):
+        from src.tracing.instrumentation import traced
+
+        @traced("retrieval", confidence_fn=lambda result: len(result))
+        def retrieve(query: str) -> list[str]:
+            return [query, query, query]
+
+        with collect_spans() as spans:
+            retrieve("q")
+
+        assert spans[0].confidence_score == 3
+
+    def test_confidence_fn_returning_none_leaves_confidence_score_none(self):
+        from src.tracing.instrumentation import traced
+
+        @traced("retrieval", confidence_fn=lambda result: None)
+        def retrieve(query: str) -> str:
+            return query
+
+        with collect_spans() as spans:
+            retrieve("q")
+
+        assert spans[0].confidence_score is None
+
 
 class TestDefaultSerialize:
     def test_serializes_plain_dict(self):
@@ -185,3 +221,20 @@ class TestDefaultSerialize:
 
         result = default_serialize(Weird())
         assert result == '"Weird()"'
+
+
+class TestConfidenceFromScore:
+    def test_zero_maps_to_1(self):
+        assert confidence_from_score(0.0) == 1
+
+    def test_one_maps_to_5(self):
+        assert confidence_from_score(1.0) == 5
+
+    def test_midpoint_maps_to_3(self):
+        assert confidence_from_score(0.5) == 3
+
+    def test_clamps_values_above_one(self):
+        assert confidence_from_score(1.5) == 5
+
+    def test_clamps_values_below_zero(self):
+        assert confidence_from_score(-0.5) == 1

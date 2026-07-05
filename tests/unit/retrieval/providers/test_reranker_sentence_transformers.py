@@ -235,3 +235,19 @@ class TestSentenceTransformersReranker:
         assert len(spans) == 1
         assert spans[0].step == "ranking"
         assert spans[0].error is None
+
+    def test_rerank_sets_confidence_score_from_mean_similarity(self):
+        from src.retrieval.providers.reranker_sentence_transformers import (
+            SentenceTransformersReranker,
+        )
+        from src.tracing.context import collect_spans
+
+        hits = [_hit("a")]
+        mock_model = MagicMock()
+        mock_model.predict.return_value = [1.0]
+        with patch("sentence_transformers.CrossEncoder", return_value=mock_model):
+            reranker = SentenceTransformersReranker()
+            with collect_spans() as spans:
+                reranker.rerank("q", hits, top_n=1)
+
+        assert spans[0].confidence_score == 5

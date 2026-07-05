@@ -17,8 +17,8 @@ Production-grade RAG (Retrieval-Augmented Generation) system with built-in obser
 | Reranking | Pluggable via `RerankerProtocol` — `sentence_transformers` cross-encoder (default, `cross-encoder/ms-marco-MiniLM-L6-v2`), `cohere` (`rerank-v4.0-pro`), or `voyage` (`rerank-2.5`); LLM-as-judge documented as a future provider |
 | LLM | GPT-4o or Claude Sonnet (via API) |
 | Chunking | LangChain text splitters |
-| Tracing | OpenTelemetry + custom spans |
-| Storage | SQLite (trace metadata) + JSON files (full traces) |
+| Tracing | Custom span/trace system (`src/tracing/`) — `ContextVar`-based sink + pydantic `Span`/`Trace` models, not the `opentelemetry` SDK; no such dependency is declared (the `opentelemetry-*` entries in `requirements.txt` are a transitive dependency of `chromadb`'s own telemetry, unrelated to this project's tracing) |
+| Storage | SQLite (trace metadata) + JSON files (full traces) — planned; not yet built (see Module Layout) |
 | API | FastAPI |
 | Frontend | Streamlit or React |
 | Containerization | Docker Compose |
@@ -124,7 +124,8 @@ src/
   tracing/            # models.py — Trace/Span pydantic models (PipelineStep/TraceStatus Literals)
                       # context.py — collect_spans() contextvar-based span sink
                       # instrumentation.py — span() context manager, traced() decorator,
-                      # default_serialize() — applied across retrieval/generation (see below)
+                      # default_serialize(), confidence_from_score() — applied across
+                      # retrieval/generation (see below)
                       # JSON trace file writer, SQLite trace index, Trace-per-request
                       # orchestrator — planned
   analysis/           # Backward trace walker, failure categorizer, evidence chain builder
@@ -137,9 +138,14 @@ scripts/
 tests/
   fixtures/           # Sample files (sample.md, sample.txt, sample.html) + PDF generator
   unit/ingestion/     # test_models, test_loader, test_storage, test_chunker
-  unit/retrieval/     # test_embedder, test_vector_store, test_bm25_store, test_indexer
-                      # test_dense_retriever, test_sparse_retriever
-                      # test_fusion, test_hybrid_retriever
+  unit/retrieval/     # test_embedder, test_vector_store, test_bm25_store, test_indexer,
+                      # test_dense_retriever, test_sparse_retriever, test_fusion,
+                      # test_hybrid_retriever, test_models (confidence helper), factory tests
+                      # providers/         # per-embedder and per-reranker provider tests
+  unit/generation/    # test_prompts, test_citation_parser, test_citation_verifier,
+                      # test_confidence_scorer, test_fallback_response
+                      # providers/         # per-judge-provider tests (citation/completeness × anthropic/openai)
+  unit/tracing/       # test_models, test_context, test_instrumentation
   integration/        # End-to-end pipeline tests against real ChromaDB
 data/
   raw/                # Uploaded source documents
@@ -166,9 +172,11 @@ data/
 
 **Provider abstraction:** Embedding and vector-store backends are chosen at runtime via `EMBEDDING_PROVIDER`/`VECTOR_STORE_PROVIDER` env vars, resolved through `make_embedder`/`make_vector_store` factories against `EmbedderProtocol`/`VectorStoreProtocol`. Provider SDKs are imported lazily inside the factory (not at module level) so installing one provider's extra doesn't require the others. On first write, `ChromaVectorStore` stamps the collection metadata with the embedder's `provider_id` and dimension count; on later opens it refuses to proceed if the configured provider doesn't match, instead of silently corrupting the index.
 
-**Trace/Span data models:** `Span` and `Trace` (`src/tracing/models.py`) are the record the instrumentation below populates. `Span` has `span_id` (auto UUID4 hex), `step` (closed `Literal["ingestion", "retrieval", "ranking", "generation", "verification"]`), `input`/`output` (`str` — serialized by `traced()`/`span()`, not typed as the raw pipeline objects), `llm_prompt` (optional), `token_count` (optional, `>= 0`), `latency_ms` (`>= 0.0`), `confidence_score` (optional, `1-5` — left unset by every instrumented call today; no function in scope produces a discrete 1-5 rating, only continuous 0-1 floats), and `error` (optional, set when the instrumented call raised). `Trace` has `trace_id` (auto UUID4 hex), `spans` (defaults to `[]`), `final_output` (optional), and `status` (closed `Literal["success", "failure", "degraded"]`, required with no default). Both are plain (non-frozen) pydantic `BaseModel`s, matching `ProcessedDocument`/`Chunk` in `src/ingestion/models.py` rather than the frozen-dataclass convention used for judge-free result values (`FallbackResponse`, `ConfidenceScore`) — pydantic gives free JSON serialization, which the not-yet-built JSON/SQLite writers will need. No orchestrator yet assembles a `Trace` per request — see "Tracing instrumentation" below for what does exist.
+**Trace/Span data models:** `Span` and `Trace` (`src/tracing/models.py`) are the record the instrumentation below populates. `Span` has `span_id` (auto UUID4 hex), `step` (closed `Literal["ingestion", "retrieval", "ranking", "generation", "verification"]`), `input`/`output` (`str` — serialized by `traced()`/`span()`, not typed as the raw pipeline objects), `llm_prompt` (optional), `token_count` (optional, `>= 0`), `latency_ms` (`>= 0.0`), `confidence_score` (optional, `1-5` — populated on most instrumented spans via `confidence_from_score()`, which linearly maps that step's own continuous 0-1 quality signal onto the 1-5 scale; left `None` on spans with no such signal, e.g. `build_fallback_response`), and `error` (optional, set when the instrumented call raised). `Trace` has `trace_id` (auto UUID4 hex), `spans` (defaults to `[]`), `final_output` (optional), and `status` (closed `Literal["success", "failure", "degraded"]`, required with no default). Both are plain (non-frozen) pydantic `BaseModel`s, matching `ProcessedDocument`/`Chunk` in `src/ingestion/models.py` rather than the frozen-dataclass convention used for judge-free result values (`FallbackResponse`, `ConfidenceScore`) — pydantic gives free JSON serialization, which the not-yet-built JSON/SQLite writers will need. No orchestrator yet assembles a `Trace` per request — see "Tracing instrumentation" below for what does exist.
 
-**Tracing instrumentation:** `collect_spans()` (`src/tracing/context.py`) is a `ContextVar`-based sink; instrumented calls append their completed `Span` to whichever list is active, and are a no-op outside any `collect_spans()` block. `span(step, input)` (`src/tracing/instrumentation.py`) is a context manager for sites needing to attach LLM prompt/token/response detail mid-function — used directly inside all four judge providers' `judge()` methods (`citation_judge_anthropic.py`, `citation_judge_openai.py`, `completeness_judge_anthropic.py`, `completeness_judge_openai.py`), each with an `_extract_token_count` helper using `isinstance` checks (not try/except) since `MagicMock` auto-vivifies attributes rather than raising. `traced(step)` is a decorator built on `span()`, typed with `ParamSpec`/`TypeVar` so no `# type: ignore` is needed at any call site; applied to `DenseRetriever.retrieve`/`SparseRetriever.retrieve`/`reciprocal_rank_fusion` (`retrieval`), the three reranker providers' `rerank()` (`ranking`), `verify_citations` (`verification`), and `score_confidence`/`build_fallback_response` (`generation`). `HybridRetriever.retrieve` is deliberately not wrapped (its four leaf calls already are, and `Span` has no parent/child field). `verify_citations`/`score_confidence` keep their own wrapper span alongside their judges' inner spans — intentional, not redundant, since each has logic (citation short-circuits, arithmetic-only dimensions) a judge span never sees; see `docs/DECISIONS.md`.
+**Tracing instrumentation:** `collect_spans()` (`src/tracing/context.py`) is a `ContextVar`-based sink; instrumented calls append their completed `Span` to whichever list is active, and are a no-op outside any `collect_spans()` block. `span(step, input)` (`src/tracing/instrumentation.py`) is a context manager for sites needing to attach LLM prompt/token/response detail mid-function — used directly inside all four judge providers' `judge()` methods (`citation_judge_anthropic.py`, `citation_judge_openai.py`, `completeness_judge_anthropic.py`, `completeness_judge_openai.py`), each with an `_extract_token_count` helper using `isinstance` checks (not try/except) since `MagicMock` auto-vivifies attributes rather than raising, and inside `reciprocal_rank_fusion` (`retrieval`) to compute its own confidence score from pre-fusion hit similarity (see below). `traced(step, confidence_fn=None)` is a decorator built on `span()`, typed with `ParamSpec`/`TypeVar` so no `# type: ignore` is needed at any call site; applied to `DenseRetriever.retrieve`/`SparseRetriever.retrieve` (`retrieval`), the three reranker providers' `rerank()` (`ranking`), `verify_citations` (`verification`), and `score_confidence`/`build_fallback_response` (`generation`). `HybridRetriever.retrieve` is deliberately not wrapped (its four leaf calls already are, and `Span` has no parent/child field). `verify_citations`/`score_confidence` keep their own wrapper span alongside their judges' inner spans — intentional, not redundant, since each has logic (citation short-circuits, arithmetic-only dimensions) a judge span never sees; see `docs/DECISIONS.md`.
+
+**Confidence score population:** `confidence_from_score(value)` (`src/tracing/instrumentation.py`) linearly maps a continuous `0-1` signal onto `Span.confidence_score`'s `1-5` scale (clamping first, so out-of-range inputs can't violate the field's `ge=1, le=5` constraint). `traced()`'s optional `confidence_fn` parameter is called with the wrapped function's return value once it succeeds, and its result populates `s.confidence_score`; typed `Callable[[Any], int | None]` rather than against `traced()`'s own `T`, because binding `T` from `confidence_fn` too causes mypy to mis-solve `T` before seeing the decorator applied (see `docs/DECISIONS.md`). `mean_similarity_confidence` (`src/retrieval/models.py`) is the shared `confidence_fn` for `DenseRetriever.retrieve`, `SparseRetriever.retrieve`, and all three rerankers' `rerank()` — mean `similarity` across returned hits, `None` if empty. `reciprocal_rank_fusion` can't use this pattern: its returned `similarity` is the fused RRF score (`~1/60` scale, not `[0,1]`), so it calls `mean_similarity_confidence` itself, inside the function, on the *pre-fusion* hits before their `similarity` is overwritten — this is why it uses `span()` directly instead of `@traced`. `verify_citations` derives confidence from the fraction of citations verified `supported=True`; `score_confidence` derives it from `ConfidenceScore.composite`. `build_fallback_response` sets no confidence score — its result is a threshold gate, not a graded signal.
 
 **Backward root-cause analysis:** When a trace is flagged as failed, the system walks spans in reverse and uses an LLM-as-judge to score each step's output quality relative to its input. The first span with a significant quality drop is classified as the root cause. Failure types: Retrieval Failure, Ranking Failure, Extraction Hallucination, Citation Error, Generation Incomplete, Context Loss.
 
@@ -199,8 +207,12 @@ VECTOR_STORE_PROVIDER= # chroma | qdrant (default: chroma; qdrant not yet implem
 CHROMA_PERSIST_DIR=    # Path for ChromaDB persistence (default: ./data/chroma)
 RAW_DATA_DIR=          # Path for uploaded source documents (default: ./data/raw)
 PROCESSED_DATA_DIR=    # Path for normalized plaintext + metadata (default: ./data/processed)
-SQLITE_DB_PATH=        # Path for trace index (default: ./data/traces.db) — not active until Phase 3 (tracing) lands
-TRACE_OUTPUT_DIR=      # Path for JSON trace files (default: ./data/traces/) — not active until Phase 3 (tracing) lands
+SQLITE_DB_PATH=        # Not yet a real Settings field — commented-out placeholder in .env.example only
+                        # (default target: ./data/traces.db). Setting it today has no effect (config.py
+                        # has no such field, and extra="ignore" silently drops it). Will be added when
+                        # the SQLite trace index is built.
+TRACE_OUTPUT_DIR=      # Same status as SQLITE_DB_PATH — placeholder only, no Settings field yet
+                        # (default target: ./data/traces/). Will be added with the JSON trace writer.
 LOG_LEVEL=             # DEBUG | INFO | WARNING (default: INFO)
 
 # Retrieval

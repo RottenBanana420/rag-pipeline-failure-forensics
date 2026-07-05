@@ -62,6 +62,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | Trace/Span pydantic data models | Done |
 | Context manager / decorator to instrument pipeline steps | Done |
 | Instrumentation applied across retrieval/generation pipeline | Done |
+| Confidence scoring (1-5) populated on retrieval/ranking/verification/generation spans | Done |
 | Trace-per-request orchestrator | Planned |
 | JSON trace file writer | Planned |
 | SQLite trace index | Planned |

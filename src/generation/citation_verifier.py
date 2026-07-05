@@ -28,7 +28,7 @@ from pydantic import BaseModel
 from src.generation.citation_parser import parse_citations
 from src.generation.prompts import GroundedPrompt, wrap_with_nonce
 from src.retrieval.models import VectorStoreHit
-from src.tracing.instrumentation import traced
+from src.tracing.instrumentation import confidence_from_score, traced
 
 if TYPE_CHECKING:
     from src.config import Settings
@@ -168,7 +168,17 @@ def build_judge_prompt(claim: str, evidence: str) -> GroundedPrompt:
     return GroundedPrompt(system=CITATION_JUDGE_SYSTEM_PROMPT, user=user)
 
 
-@traced("verification")
+def _citation_coverage_confidence(
+    results: list[CitationVerificationResult],
+) -> int | None:
+    """Map the fraction of supported citations onto a 1-5 confidence score."""
+    if not results:
+        return None
+    coverage = sum(1 for result in results if result.supported) / len(results)
+    return confidence_from_score(coverage)
+
+
+@traced("verification", confidence_fn=_citation_coverage_confidence)
 def verify_citations(
     answer_text: str, hits: list[VectorStoreHit], judge: CitationJudgeProtocol
 ) -> list[CitationVerificationResult]:

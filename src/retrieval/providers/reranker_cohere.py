@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from src.retrieval.models import VectorStoreHit
+from src.retrieval.models import VectorStoreHit, mean_similarity_confidence
 from src.tracing.instrumentation import traced
 
 if TYPE_CHECKING:
@@ -36,7 +36,7 @@ class CohereReranker:
         """Provider identifier including model name, e.g. ``"cohere/rerank-v4.0-pro"``."""
         return f"cohere/{self._model}"
 
-    @traced("ranking")
+    @traced("ranking", confidence_fn=mean_similarity_confidence)
     def rerank(
         self, query: str, hits: list[VectorStoreHit], top_n: int
     ) -> list[VectorStoreHit]:

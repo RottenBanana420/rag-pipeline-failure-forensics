@@ -496,6 +496,36 @@ class TestScoreConfidence:
 
         score_confidence("q", "a", [], [], judge)
 
+    def test_confidence_score_reflects_high_composite(self):
+        from src.tracing.context import collect_spans
+
+        hits = [make_hit(similarity=1.0)]
+        citation_results = [
+            CitationVerificationResult(
+                claim_text="c", chunk_indices=[1], supported=True, reasoning="r"
+            )
+        ]
+        judge = FakeCompletenessJudge(
+            verdicts={"q": CompletenessVerdict(complete=True, reasoning="ok")}
+        )
+
+        with collect_spans() as spans:
+            score_confidence("q", "a", hits, citation_results, judge)
+
+        assert spans[0].confidence_score == 5
+
+    def test_confidence_score_reflects_low_composite(self):
+        from src.tracing.context import collect_spans
+
+        judge = FakeCompletenessJudge(
+            verdicts={"q": CompletenessVerdict(complete=False, reasoning="no")}
+        )
+
+        with collect_spans() as spans:
+            score_confidence("q", "a", [], [], judge)
+
+        assert spans[0].confidence_score == 1
+
     def test_judge_span_nests_with_wrapper_span(self):
         """Regression pin for the documented intentional-nesting decision.
 

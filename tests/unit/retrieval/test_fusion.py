@@ -109,3 +109,31 @@ class TestFusionTracing:
 
     def test_noop_outside_collect_spans(self):
         reciprocal_rank_fusion([], [], top_n=5)
+
+    def test_confidence_score_uses_underlying_similarity_not_rrf_score(self):
+        # The RRF score itself (~1/61 here) would map to confidence 1 if used
+        # directly — confidence must come from the pre-fusion similarity
+        # (1.0) instead, which maps to 5.
+        hits = [_hit("c1", similarity=1.0)]
+
+        with collect_spans() as spans:
+            reciprocal_rank_fusion(
+                hits, [], dense_weight=1.0, sparse_weight=0.0, top_n=1
+            )
+
+        assert spans[0].confidence_score == 5
+
+    def test_confidence_score_averages_similarity_of_selected_hits(self):
+        dense = [_hit("d1", similarity=1.0)]
+        sparse = [_hit("s1", similarity=0.0)]
+
+        with collect_spans() as spans:
+            reciprocal_rank_fusion(dense, sparse, top_n=2)
+
+        assert spans[0].confidence_score == 3
+
+    def test_no_hits_leaves_confidence_score_none(self):
+        with collect_spans() as spans:
+            reciprocal_rank_fusion([], [], top_n=5)
+
+        assert spans[0].confidence_score is None

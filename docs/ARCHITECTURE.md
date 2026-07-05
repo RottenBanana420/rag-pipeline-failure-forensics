@@ -1,5 +1,52 @@
 # Architecture Overview
 
+## 2026-07-05 — Phase 3: Confidence Scoring in Spans (Complete)
+
+### Populating `Span.confidence_score`
+
+The Phase 3 span instrumentation entry below left `Span.confidence_score` unset everywhere — no function produced a discrete 1-5 rating, only continuous 0-1 floats. This closes that gap for every step that has a natural quality signal.
+
+**`confidence_from_score(value)`** (`src/tracing/instrumentation.py`) — a small pure function mapping a continuous `0-1` signal onto the `1-5` scale: `round(clamp(value, 0, 1) * 4) + 1`. Clamping first means an out-of-range input (e.g. a caller-supplied weight set that pushes `ConfidenceScore.composite` above `1.0`) can't violate `Span.confidence_score`'s `ge=1, le=5` constraint.
+
+**`traced()` gained an optional `confidence_fn` parameter** — called with the wrapped function's return value once it succeeds; its result (`int` 1-5, or `None`) becomes `s.confidence_score`. Typed `Callable[[Any], int | None]`, deliberately *not* against `traced()`'s own `T`: an earlier attempt to type it as `Callable[[T], ...]` made mypy mis-solve `T` before it saw the expression applied as a decorator (surfaced as 6 new mypy errors — `Never` return types and over-widened `Sequence` types leaking into `RerankerProtocol` conformance and `HybridRetriever`). See the `DECISIONS.md` entry for the full mechanism.
+
+**`mean_similarity_confidence(hits)`** (`src/retrieval/models.py`) is the shared `confidence_fn` for `DenseRetriever.retrieve`, `SparseRetriever.retrieve`, and all three rerankers' `rerank()` — mean `similarity` across the returned hits, `None` if empty. Takes `list[VectorStoreHit]` specifically (not the broader `Sequence[VectorStoreHit]`), for the same T-solving reason above.
+
+**`reciprocal_rank_fusion` is the one exception** — converted from `@traced("retrieval")` to a manual `with span("retrieval", ...)` block, because `confidence_fn` only ever sees a call's *return* value, and RRF's returned `similarity` is the fused RRF score (~1/60 scale), not a `[0,1]` signal. Feeding it through `confidence_from_score` would report confidence `1` on every call regardless of actual retrieval quality — the opposite of useful for backward failure analysis. Instead it calls `mean_similarity_confidence` itself, inside the function, on the *pre-fusion* hits (captured before `similarity` is overwritten with the RRF score).
+
+**`verify_citations`** derives confidence from the fraction of citations verified `supported=True`. **`score_confidence`** derives it from `ConfidenceScore.composite`. **`build_fallback_response`** gets no confidence score — its result is a threshold gate, not a graded signal of its own.
+
+Updated table of what `traced(step, confidence_fn=...)` now wraps:
+
+| Function | Step | `confidence_fn` |
+|---|---|---|
+| `DenseRetriever.retrieve`, `SparseRetriever.retrieve` | `retrieval` | `mean_similarity_confidence` |
+| `SentenceTransformersReranker.rerank`, `CohereReranker.rerank`, `VoyageReranker.rerank` | `ranking` | `mean_similarity_confidence` |
+| `verify_citations` | `verification` | citation-coverage fraction |
+| `score_confidence` | `generation` | `ConfidenceScore.composite` |
+| `build_fallback_response` | `generation` | none — threshold gate, not a graded signal |
+
+`reciprocal_rank_fusion` (`retrieval`) is no longer in this table — it uses `span()` directly (see above).
+
+**Public API:**
+
+```python
+from src.tracing.context import collect_spans
+
+with collect_spans() as spans:
+    hits = dense_retriever.retrieve("What is RRF?")
+    reranked = reranker.rerank("What is RRF?", hits, top_n=5)
+
+for s in spans:
+    print(s.step, s.confidence_score)  # e.g. "retrieval 4", "ranking 5"
+```
+
+**Design notes:**
+- Linear mapping (not percentile/bucket-based) — none of the three signals mapped here (mean similarity, citation coverage, composite) has a documented distribution to calibrate bucket edges against, so an evenly-spaced map is the least assumption-laden choice.
+- Superseded claims: the "Span Instrumentation" entry immediately below originally stated confidence_score is left unset by every function and that `reciprocal_rank_fusion` is one of the `traced()`-wrapped functions — both statements were accurate for that entry's date and are corrected by this one.
+
+---
+
 ## 2026-07-04 — Phase 3: Span Instrumentation (Complete)
 
 ### Wrapping Pipeline Steps in Spans

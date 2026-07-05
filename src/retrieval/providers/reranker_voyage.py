@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from src.retrieval.models import VectorStoreHit
+from src.retrieval.models import VectorStoreHit, mean_similarity_confidence
 from src.tracing.instrumentation import traced
 
 if TYPE_CHECKING:
@@ -41,7 +41,7 @@ class VoyageReranker:
         """Provider identifier including model name, e.g. ``"voyage/rerank-2.5"``."""
         return f"voyage/{self._model}"
 
-    @traced("ranking")
+    @traced("ranking", confidence_fn=mean_similarity_confidence)
     def rerank(
         self, query: str, hits: list[VectorStoreHit], top_n: int
     ) -> list[VectorStoreHit]:

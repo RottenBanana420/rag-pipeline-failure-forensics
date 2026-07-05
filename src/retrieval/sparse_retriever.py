@@ -1,7 +1,7 @@
 import dataclasses
 
 from src.retrieval.bm25_store import BM25Store
-from src.retrieval.models import VectorStoreHit
+from src.retrieval.models import VectorStoreHit, mean_similarity_confidence
 from src.retrieval.vector_store import VectorStoreProtocol
 from src.tracing.instrumentation import traced
 
@@ -15,7 +15,7 @@ class SparseRetriever:
         self._bm25_store = bm25_store
         self._vector_store = vector_store
 
-    @traced("retrieval")
+    @traced("retrieval", confidence_fn=mean_similarity_confidence)
     def retrieve(self, query: str, k: int = _DEFAULT_K) -> list[VectorStoreHit]:
         scores = self._bm25_store.get_scores(query)
         if not scores:

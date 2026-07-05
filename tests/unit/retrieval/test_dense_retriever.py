@@ -98,3 +98,25 @@ class TestDenseRetrieverTracing:
 
         # Must not raise even with no active tracing context.
         DenseRetriever(embedder, vs).retrieve("q")
+
+    def test_retrieve_sets_confidence_score_from_mean_similarity(self):
+        embedder = MagicMock(spec=Embedder)
+        embedder.embed.return_value = [[1.0, 0.0, 0.0]]
+        vs = MagicMock(spec=VectorStore)
+        vs.query.return_value = [_hit(chunk_id="c-000", similarity=1.0)]
+
+        with collect_spans() as spans:
+            DenseRetriever(embedder, vs).retrieve("q")
+
+        assert spans[0].confidence_score == 5
+
+    def test_retrieve_no_hits_leaves_confidence_score_none(self):
+        embedder = MagicMock(spec=Embedder)
+        embedder.embed.return_value = [[1.0, 0.0, 0.0]]
+        vs = MagicMock(spec=VectorStore)
+        vs.query.return_value = []
+
+        with collect_spans() as spans:
+            DenseRetriever(embedder, vs).retrieve("q")
+
+        assert spans[0].confidence_score is None

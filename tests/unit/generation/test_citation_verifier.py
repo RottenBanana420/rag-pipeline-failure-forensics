@@ -331,6 +331,47 @@ class TestVerifyCitations:
 
         verify_citations("Some claim [1].", hits, judge)
 
+    def test_confidence_score_all_supported_is_5(self):
+        from src.tracing.context import collect_spans
+
+        hits = [make_hit(chunk_id="a", text="Paris is the capital of France.")]
+        judge = FakeJudge()  # default canned verdict is supported=True
+        answer = "Paris is the capital [1]."
+
+        with collect_spans() as spans:
+            verify_citations(answer, hits, judge)
+
+        assert spans[0].confidence_score == 5
+
+    def test_confidence_score_all_unsupported_is_1(self):
+        from src.tracing.context import collect_spans
+
+        hits = [make_hit(chunk_id="a", text="Lyon is a city in France.")]
+        judge = FakeJudge(
+            verdicts={
+                "Paris is the capital": JudgeVerdict(
+                    supported=False, reasoning="Evidence does not mention Paris."
+                )
+            }
+        )
+        answer = "Paris is the capital [1]."
+
+        with collect_spans() as spans:
+            verify_citations(answer, hits, judge)
+
+        assert spans[0].confidence_score == 1
+
+    def test_no_citations_leaves_confidence_score_none(self):
+        from src.tracing.context import collect_spans
+
+        hits = [make_hit()]
+        judge = FakeJudge()
+
+        with collect_spans() as spans:
+            verify_citations("This text has no citation markers at all.", hits, judge)
+
+        assert spans[0].confidence_score is None
+
     def test_judge_span_nests_with_wrapper_span(self):
         """Regression pin for the documented intentional-nesting decision.
 

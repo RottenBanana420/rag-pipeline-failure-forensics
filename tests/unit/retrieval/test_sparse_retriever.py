@@ -178,3 +178,25 @@ class TestSparseRetrieverTracing:
         vs = MagicMock(spec=VectorStore)
 
         SparseRetriever(bm25, vs).retrieve("q")
+
+    def test_retrieve_sets_confidence_score_from_mean_similarity(self):
+        bm25 = MagicMock(spec=BM25Store)
+        bm25.get_scores.return_value = [("c-000", 3.5)]
+        vs = MagicMock(spec=VectorStore)
+        vs.get_by_ids.return_value = [_hit(chunk_id="c-000")]
+
+        with collect_spans() as spans:
+            SparseRetriever(bm25, vs).retrieve("q")
+
+        # Single hit normalizes to similarity 1.0 -> confidence 5.
+        assert spans[0].confidence_score == 5
+
+    def test_retrieve_no_hits_leaves_confidence_score_none(self):
+        bm25 = MagicMock(spec=BM25Store)
+        bm25.get_scores.return_value = []
+        vs = MagicMock(spec=VectorStore)
+
+        with collect_spans() as spans:
+            SparseRetriever(bm25, vs).retrieve("q")
+
+        assert spans[0].confidence_score is None

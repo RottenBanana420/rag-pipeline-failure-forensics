@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
 from pydantic import BaseModel
 
@@ -54,6 +54,18 @@ def default_serialize(value: object) -> str:
     return json.dumps(_serialize_item(value), default=repr)
 
 
+def confidence_from_score(value: float) -> int:
+    """Map a continuous 0-1 quality signal onto `Span.confidence_score`'s 1-5 scale.
+
+    Values outside `[0, 1]` are clamped first — some upstream signals (e.g. a
+    raw RRF fusion score) aren't naturally bounded to `[0, 1]`, and this keeps
+    the result within `Span.confidence_score`'s `ge=1, le=5` constraint
+    regardless.
+    """
+    clamped = min(max(value, 0.0), 1.0)
+    return round(clamped * 4) + 1
+
+
 @contextmanager
 def span(step: PipelineStep, input: str) -> Iterator[_SpanBuilder]:
     """Time a pipeline step and record it as a `Span` if tracing is active.
@@ -94,7 +106,9 @@ def span(step: PipelineStep, input: str) -> Iterator[_SpanBuilder]:
             )
 
 
-def traced(step: PipelineStep) -> Callable[[Callable[P, T]], Callable[P, T]]:
+def traced(
+    step: PipelineStep, confidence_fn: Callable[[Any], int | None] | None = None
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """Decorator: wrap a function/method so each call records a `Span`.
 
     Auto-serializes the call's bound arguments (`self` excluded, defaults
@@ -102,6 +116,20 @@ def traced(step: PipelineStep) -> Callable[[Callable[P, T]], Callable[P, T]]:
     `output`. For sites needing to attach LLM prompt/response/token detail
     that isn't derivable from arguments/return value alone, use `span()`
     directly instead.
+
+    If `confidence_fn` is given, it's called with the function's return value
+    once the call succeeds, and its result (an `int` 1-5, or `None` if the
+    result gives no basis for a confidence score) is recorded as the span's
+    `confidence_score`. Not called if the function raises.
+
+    `confidence_fn` is typed as `Callable[[Any], ...]` rather than
+    `Callable[[T], ...]`: `T` is only meant to be solved from `decorator`'s
+    `func` parameter (so the wrapped function's return type is preserved
+    exactly). Binding `T` from `confidence_fn` too — before `traced()`'s
+    return value is applied as a decorator — makes mypy commit to a `T`
+    (`Never`, when `confidence_fn` is omitted; the confidence_fn's own
+    parameter type, e.g. `Sequence[X]`, when given) that doesn't match the
+    decorated function's actual return type.
     """
 
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
@@ -116,6 +144,8 @@ def traced(step: PipelineStep) -> Callable[[Callable[P, T]], Callable[P, T]]:
             with span(step, input=default_serialize(arguments)) as s:
                 result = func(*args, **kwargs)
                 s.output = default_serialize(result)
+                if confidence_fn is not None:
+                    s.confidence_score = confidence_fn(result)
                 return result
 
         return wrapper

@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 
-from src.retrieval.models import VectorStoreHit
+from src.retrieval.models import VectorStoreHit, mean_similarity_confidence
 from src.tracing.instrumentation import traced
 
 DEFAULT_MODEL = "cross-encoder/ms-marco-MiniLM-L6-v2"
@@ -51,7 +51,7 @@ class SentenceTransformersReranker:
         """Provider identifier including model name."""
         return f"sentence_transformers/{self._model_name}"
 
-    @traced("ranking")
+    @traced("ranking", confidence_fn=mean_similarity_confidence)
     def rerank(
         self, query: str, hits: list[VectorStoreHit], top_n: int
     ) -> list[VectorStoreHit]:
