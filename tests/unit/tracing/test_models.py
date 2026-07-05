@@ -40,6 +40,7 @@ class TestSpanValidation:
             "ranking",
             "generation",
             "verification",
+            "analysis",
         ):
             span = Span(**_valid_span_kwargs(step=step))
             assert span.step == step

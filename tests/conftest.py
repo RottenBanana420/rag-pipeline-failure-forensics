@@ -63,5 +63,9 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "CONFIDENCE_COMPLETENESS_WEIGHT",
         "TRACE_OUTPUT_DIR",
         "SQLITE_DB_PATH",
+        "ROOT_CAUSE_JUDGE_PROVIDER",
+        "ROOT_CAUSE_JUDGE_MODEL",
+        "ROOT_CAUSE_JUDGE_TEMPERATURE",
+        "ROOT_CAUSE_QUALITY_THRESHOLD",
     ]:
         monkeypatch.delenv(var, raising=False)

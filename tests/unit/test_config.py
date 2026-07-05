@@ -532,6 +532,151 @@ class TestConfidenceScoringSettingsValidation:
             Settings()
 
 
+class TestRootCauseSettingsDefaults:
+    def test_root_cause_judge_provider_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().root_cause_judge_provider == "anthropic"
+
+    def test_root_cause_judge_model_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().root_cause_judge_model == "claude-sonnet-4-5"
+
+    def test_root_cause_judge_temperature_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().root_cause_judge_temperature == pytest.approx(0.0)
+
+    def test_root_cause_quality_threshold_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().root_cause_quality_threshold == 2
+
+
+class TestRootCauseSettingsOverrides:
+    def test_root_cause_judge_provider_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_JUDGE_PROVIDER", "openai")
+        assert Settings().root_cause_judge_provider == "openai"
+
+    def test_root_cause_judge_model_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_JUDGE_MODEL", "gpt-4-turbo")
+        assert Settings().root_cause_judge_model == "gpt-4-turbo"
+
+    def test_root_cause_judge_temperature_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_JUDGE_TEMPERATURE", "0.5")
+        assert Settings().root_cause_judge_temperature == pytest.approx(0.5)
+
+    def test_root_cause_quality_threshold_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_QUALITY_THRESHOLD", "3")
+        assert Settings().root_cause_quality_threshold == 3
+
+
+class TestRootCauseSettingsValidation:
+    def test_root_cause_judge_provider_invalid_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_JUDGE_PROVIDER", "gemini")
+        with pytest.raises(ValidationError, match="root_cause_judge_provider"):
+            Settings()
+
+    def test_root_cause_judge_temperature_below_zero_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_JUDGE_TEMPERATURE", "-0.1")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_root_cause_judge_temperature_above_one_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_JUDGE_TEMPERATURE", "1.5")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_root_cause_judge_temperature_boundary_zero(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_JUDGE_TEMPERATURE", "0.0")
+        assert Settings().root_cause_judge_temperature == pytest.approx(0.0)
+
+    def test_root_cause_judge_temperature_boundary_one(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_JUDGE_TEMPERATURE", "1.0")
+        assert Settings().root_cause_judge_temperature == pytest.approx(1.0)
+
+    def test_root_cause_quality_threshold_below_one_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_QUALITY_THRESHOLD", "0")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_root_cause_quality_threshold_above_five_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_QUALITY_THRESHOLD", "6")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_root_cause_quality_threshold_boundary_one(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_QUALITY_THRESHOLD", "1")
+        assert Settings().root_cause_quality_threshold == 1
+
+    def test_root_cause_quality_threshold_boundary_five(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ROOT_CAUSE_QUALITY_THRESHOLD", "5")
+        assert Settings().root_cause_quality_threshold == 5
+
+
 class TestChunkingSettingsValidation:
     def test_invalid_chunk_strategy_rejected(
         self, clean_env: None, monkeypatch: pytest.MonkeyPatch

@@ -1,5 +1,61 @@
 # Architecture Overview
 
+## 2026-07-05 — Phase 4: Backward Root-Cause Span Identification (Complete)
+
+### LLM-as-Judge Span Quality Scoring
+
+When a `Trace` is flagged as failed, `find_root_cause_span` walks its spans in reverse execution order, scoring each one's input→output transformation quality to identify where the pipeline broke. The span with the greatest quality drop is the root cause — not the last-executed bad span (which is often a symptom), but the earliest bad span in the contiguous unhealthy tail (where corruption originated).
+
+**`StepQualityVerdict`** (`src/analysis/root_cause.py`) — pydantic `BaseModel` with `score: int` (`ge=1, le=5`) and `rationale: str`. Passed directly to LLM SDKs as structured-output schema, matching `JudgeVerdict`/`CompletenessVerdict` convention.
+
+**`StepQualityJudgeProtocol`** (`src/analysis/root_cause.py`) — `judge(step: PipelineStep, input: str, output: str) -> StepQualityVerdict`, `provider_id: str`. `make_step_quality_judge(settings)` returns the configured provider (anthropic or openai), same lazy-import factory pattern as `make_embedder`/`make_citation_judge`.
+
+**Implemented providers:**
+
+| Provider | Class | File | Default model |
+|---|---|---|---|
+| `anthropic` (default) | `AnthropicStepQualityJudge` | `src/analysis/providers/step_quality_judge_anthropic.py` | `claude-sonnet-4-5` |
+| `openai` | `OpenAIStepQualityJudge` | `src/analysis/providers/step_quality_judge_openai.py` | `gpt-4o-2024-08-06` |
+
+**`STEP_QUALITY_CRITERIA`** — a dict mapping each `PipelineStep` (including new `"analysis"` value) to step-specific criteria text. The judge's system prompt branches per step so it doesn't apply generation criteria to a retrieval failure or vice versa.
+
+**`find_root_cause_span(trace, judge, threshold) -> RootCauseDiagnosis | None`** — the walker function:
+- Iterates `trace.spans` in reverse execution order
+- Calls `judge.judge(step, input, output)` per span
+- A span scoring `<= threshold` (default 2) is "unreasonable"
+- Remembers the candidate as the root cause; stops when a span scores `> threshold` (healthy boundary found)
+- Returns `None` if no span is ever at/below threshold (nothing wrong)
+- Returns `RootCauseDiagnosis` with `root_cause_span`, `score`, `rationale`, and `evaluated_spans` (the judged unhealthy tail, in reverse-walk order)
+
+**Cascade handling:** Only the contiguous unhealthy tail is judged. If a healthy span is found, earlier spans (before the boundary) are never judged. This ensures the root cause surfaces where the corruption originated, not at downstream symptoms.
+
+**`PipelineStep` extension:** The Literal now has 6 values: `"ingestion"`, `"retrieval"`, `"ranking"`, `"generation"`, `"verification"`, `"analysis"` (new). The judge's own LLM call wraps itself in `span("analysis", ...)`, giving RCA the same observability (prompt/tokens/latency/errors) as every other judge.
+
+**Settings additions:**
+- `root_cause_judge_provider` (default `"anthropic"`)
+- `root_cause_judge_model` (default `"claude-sonnet-4-5"`)
+- `root_cause_judge_temperature` (default `0.0`)
+- `root_cause_quality_threshold` (default `2`, `ge=1, le=5`)
+
+**Public API:**
+
+```python
+from src.config import settings
+from src.analysis.root_cause import find_root_cause_span, make_step_quality_judge
+
+judge = make_step_quality_judge(settings)
+diagnosis = find_root_cause_span(trace, judge, threshold=settings.root_cause_quality_threshold)
+if diagnosis:
+    print(f"Root cause at {diagnosis.root_cause_span.step}: {diagnosis.rationale}")
+```
+
+**Design notes:**
+- Like `verify_citations`/`score_confidence`/`build_fallback_response`, this is a standalone, directly-callable unit — no orchestrator yet loads a flagged trace and calls this automatically. Wiring it into the API is Phase 7 work.
+- `find_root_cause_span` itself is not wrapped in `@traced` (each `judge.judge()` call already gets its own `span("analysis", ...)` from the provider). Same reasoning as `HybridRetriever` not being separately wrapped.
+- Failure-type categorization (Retrieval Failure, Ranking Failure, Extraction Hallucination, Citation Error, Generation Incomplete, Context Loss) and the narrative evidence-chain builder are separate tasks (Phase 4, Tasks 2–3) — out of scope for Phase 4, Task 1.
+
+---
+
 ## 2026-07-05 — Phase 3: Trace Persistence — JSON Files + SQLite Index (Complete)
 
 ### Writing and indexing completed traces
@@ -662,8 +718,11 @@ src/
   generation/         # Grounded prompt, citation parser/verifier, confidence scorer, fallback
                       # response (complete; no generation orchestrator wiring them together yet)
   tracing/            # Trace/Span models (complete); context manager, decorator, JSON+SQLite
-                      # writers [planned]
-  analysis/           # Backward trace walker, failure categorizer, evidence chain builder [planned]
+                      # writers (complete)
+  analysis/           # StepQualityJudgeProtocol, make_step_quality_judge factory, 
+                      # find_root_cause_span walker (complete); failure categorizer, 
+                      # evidence chain builder [planned]
+                      # providers/        # step_quality_judge_anthropic.py, step_quality_judge_openai.py
   evaluation/         # Golden dataset runner, metric calculators, regression tracker [planned]
   api/                # FastAPI app, route handlers [planned]
   frontend/           # Streamlit or React query dashboard and trace explorer [planned]

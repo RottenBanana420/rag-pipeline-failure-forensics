@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 PipelineStep = Literal[
-    "ingestion", "retrieval", "ranking", "generation", "verification"
+    "ingestion", "retrieval", "ranking", "generation", "verification", "analysis"
 ]
 
 

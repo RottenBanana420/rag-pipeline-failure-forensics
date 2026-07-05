@@ -88,6 +88,22 @@ class Settings(BaseSettings):
     # structured "insufficient information" response instead of generating)
     retrieval_confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
+    # Root-cause analysis (backward span-quality judging)
+    root_cause_judge_provider: Literal["anthropic", "openai"] = Field(
+        default="anthropic"
+    )
+    root_cause_judge_model: str = Field(default="claude-sonnet-4-5")
+    root_cause_judge_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+    root_cause_quality_threshold: int = Field(
+        default=2,
+        ge=1,
+        le=5,
+        description=(
+            "A span scoring at or below this is treated as an unreasonable "
+            "input→output transformation"
+        ),
+    )
+
     # Data directories
     raw_data_dir: Path = Field(default=Path("./data/raw"))
     processed_data_dir: Path = Field(default=Path("./data/processed"))
