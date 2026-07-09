@@ -19,10 +19,10 @@ This module is a standalone, directly-callable unit — like
 load a trace and call this automatically. `find_root_cause_span` takes an
 already-loaded `Trace` and a judge instance as plain parameters.
 
-Failure-type categorization (Retrieval Failure, Ranking Failure, Extraction
-Hallucination, Citation Error, Generation Incomplete, Context Loss) and the
-narrative evidence-chain builder are separate, later tasks — out of scope
-here.
+Failure-type categorization now lives in `failure_categorizer.py`
+(`categorize_failure`), which classifies the `RootCauseDiagnosis` this module
+returns. The narrative evidence-chain builder remains a separate, later
+task — out of scope here.
 
 Span input/output text is untrusted (it originates from pipeline execution,
 not this application) and is wrapped in nonce-suffixed XML-style tags

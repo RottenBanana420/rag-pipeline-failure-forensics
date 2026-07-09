@@ -1,5 +1,57 @@
 # Architecture Overview
 
+## 2026-07-09 — Phase 4: Failure-Type Categorization (Complete)
+
+### LLM-as-Judge Failure Classification
+
+Given the `RootCauseDiagnosis` that `find_root_cause_span` (Phase 4, Task 1, above) produces, `categorize_failure` classifies the diagnosed root-cause span into one of the project spec's six failure categories, plus a 7th catch-all. This is the direct continuation of root-cause identification: root-cause finds *which span* broke the pipeline, categorization names *what kind* of failure it was.
+
+**`FailureCategory`** (`src/analysis/failure_categorizer.py`) — `Literal["retrieval_failure", "ranking_failure", "extraction_hallucination", "citation_error", "generation_incomplete", "context_loss", "other"]`. The first six are the project spec's named taxonomy; `"other"` is a 7th value covering root causes from steps the spec's taxonomy doesn't name (`"ingestion"`, `"analysis"`).
+
+**`FailureCategoryVerdict`** — pydantic `BaseModel` with `category: FailureCategory` and `rationale: str`, same structured-output convention as `StepQualityVerdict`.
+
+**`FailureCategoryJudgeProtocol`** — `classify(step: PipelineStep, input: str, output: str, quality_rationale: str) -> FailureCategoryVerdict`, `provider_id: str`. `make_failure_category_judge(settings)` returns the configured provider (anthropic or openai), same lazy-import factory pattern as `make_step_quality_judge`.
+
+**Implemented providers:**
+
+| Provider | Class | File | Default model |
+|---|---|---|---|
+| `anthropic` (default) | `AnthropicFailureCategoryJudge` | `src/analysis/providers/failure_category_judge_anthropic.py` | `claude-sonnet-4-5` |
+| `openai` | `OpenAIFailureCategoryJudge` | `src/analysis/providers/failure_category_judge_openai.py` | `gpt-4o-2024-08-06` |
+
+**`STEP_TO_PLAUSIBLE_CATEGORIES`** — a `dict[PipelineStep, tuple[FailureCategory, ...]]` restricting which categories are valid for a given root-cause span's step (e.g. `"verification"` can only be `"citation_error"`; `"generation"` can be any of `"extraction_hallucination"`, `"generation_incomplete"`, or `"context_loss"`, since the mapping from step to category isn't 1:1). The system prompt states this subset explicitly as a guardrail, instructing the judge to choose only from it; `FAILURE_CATEGORY_CRITERIA` gives the judge the full taxonomy's descriptions so it understands the categories it's choosing between, not just its own.
+
+**`categorize_failure(diagnosis, judge) -> FailureCategoryVerdict`** — the standalone entry point:
+- Unpacks `diagnosis.root_cause_span.step/input/output` and `diagnosis.rationale` (the step-quality judge's own explanation from Task 1, passed through as `quality_rationale` — extra classification signal)
+- Calls `judge.classify(...)` once and returns its verdict unchanged
+- Adds no span of its own — same reasoning as `find_root_cause_span` not being traced itself; only the provider's `classify()` call emits a `step="analysis"` span
+
+**Settings additions:**
+- `failure_category_judge_provider` (default `"anthropic"`)
+- `failure_category_judge_model` (default `"claude-sonnet-4-5"`)
+- `failure_category_judge_temperature` (default `0.0`)
+
+**Public API:**
+
+```python
+from src.config import settings
+from src.analysis.root_cause import find_root_cause_span, make_step_quality_judge
+from src.analysis.failure_categorizer import categorize_failure, make_failure_category_judge
+
+quality_judge = make_step_quality_judge(settings)
+diagnosis = find_root_cause_span(trace, quality_judge, threshold=settings.root_cause_quality_threshold)
+if diagnosis:
+    category_judge = make_failure_category_judge(settings)
+    verdict = categorize_failure(diagnosis, category_judge)
+    print(f"{diagnosis.root_cause_span.step} failed as {verdict.category}: {verdict.rationale}")
+```
+
+**Design notes:**
+- Standalone, directly-callable unit — no orchestrator yet loads a flagged trace, runs root-cause identification, and categorizes the result automatically. Wiring it into the API is Phase 7 work.
+- The narrative evidence-chain builder (Phase 4, Task 3) is still out of scope.
+
+---
+
 ## 2026-07-05 — Phase 4: Backward Root-Cause Span Identification (Complete)
 
 ### LLM-as-Judge Span Quality Scoring
@@ -52,7 +104,7 @@ if diagnosis:
 **Design notes:**
 - Like `verify_citations`/`score_confidence`/`build_fallback_response`, this is a standalone, directly-callable unit — no orchestrator yet loads a flagged trace and calls this automatically. Wiring it into the API is Phase 7 work.
 - `find_root_cause_span` itself is not wrapped in `@traced` (each `judge.judge()` call already gets its own `span("analysis", ...)` from the provider). Same reasoning as `HybridRetriever` not being separately wrapped.
-- Failure-type categorization (Retrieval Failure, Ranking Failure, Extraction Hallucination, Citation Error, Generation Incomplete, Context Loss) and the narrative evidence-chain builder are separate tasks (Phase 4, Tasks 2–3) — out of scope for Phase 4, Task 1.
+- Failure-type categorization (Phase 4, Task 2) is implemented separately — see the "Failure-Type Categorization" section below. The narrative evidence-chain builder (Phase 4, Task 3) remains out of scope.
 
 ---
 
@@ -720,9 +772,11 @@ src/
   tracing/            # Trace/Span models (complete); context manager, decorator, JSON+SQLite
                       # writers (complete)
   analysis/           # StepQualityJudgeProtocol, make_step_quality_judge factory, 
-                      # find_root_cause_span walker (complete); failure categorizer, 
-                      # evidence chain builder [planned]
-                      # providers/        # step_quality_judge_anthropic.py, step_quality_judge_openai.py
+                      # find_root_cause_span walker (complete)
+                      # FailureCategoryJudgeProtocol, make_failure_category_judge factory,
+                      # categorize_failure (complete); narrative evidence chain builder [planned]
+                      # providers/        # step_quality_judge_anthropic.py, step_quality_judge_openai.py,
+                      #                   # failure_category_judge_anthropic.py, failure_category_judge_openai.py
   evaluation/         # Golden dataset runner, metric calculators, regression tracker [planned]
   api/                # FastAPI app, route handlers [planned]
   frontend/           # Streamlit or React query dashboard and trace explorer [planned]

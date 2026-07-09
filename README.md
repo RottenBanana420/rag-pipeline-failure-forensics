@@ -24,7 +24,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | 1 | Ingestion, Chunking, Hybrid Retrieval | Done |
 | 2 | Generation with Citations | In Progress |
 | 3 | Tracing & Instrumentation | In Progress |
-| 4 | Backward Failure Analysis | Planned |
+| 4 | Backward Failure Analysis | In Progress |
 | 5 | Visual Explorers & Frontend | Planned |
 | 6 | Evaluation Framework | Planned |
 | 7 | FastAPI, Docker, Portfolio Polish | Planned |
@@ -66,3 +66,11 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | JSON trace file writer (`src/tracing/storage.py`) | Done |
 | SQLite trace index (`src/tracing/index.py`) | Done |
 | Trace-per-request orchestrator | Planned |
+
+### Phase 4 Progress
+
+| Component | Status |
+|-----------|--------|
+| Backward root-cause span identification (`find_root_cause_span`, Anthropic/OpenAI step-quality judges) | Done |
+| Failure-type categorization (`categorize_failure`, Anthropic/OpenAI failure-category judges) | Done |
+| Narrative evidence-chain builder | Planned |
