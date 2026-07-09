@@ -21,8 +21,10 @@ already-loaded `Trace` and a judge instance as plain parameters.
 
 Failure-type categorization now lives in `failure_categorizer.py`
 (`categorize_failure`), which classifies the `RootCauseDiagnosis` this module
-returns. The narrative evidence-chain builder remains a separate, later
-task — out of scope here.
+returns. The narrative evidence-chain builder is implemented separately, in
+`evidence_chain.py` (`build_evidence_chain`), which synthesizes a causal
+narrative from this module's diagnosis and `failure_categorizer.py`'s
+category verdict.
 
 Span input/output text is untrusted (it originates from pipeline execution,
 not this application) and is wrapped in nonce-suffixed XML-style tags

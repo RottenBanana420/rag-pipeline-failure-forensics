@@ -92,6 +92,7 @@ Every request is wrapped in a **Trace** (unique `trace_id`) containing **Spans**
 
 ```
 src/
+  config.py           # Settings (pydantic-settings) singleton — every env var below maps to a field here
   ingestion/          # Document loaders, chunking strategies, deduplication
   retrieval/          # EmbedderProtocol + make_embedder factory, VectorStoreProtocol +
                       # make_vector_store factory, ChromaVectorStore (cosine dedup + dimension
@@ -141,9 +142,12 @@ src/
                       # failure_categorizer.py — FailureCategoryJudgeProtocol + make_failure_category_judge
                       # factory (same lazy-import pattern) + categorize_failure, which classifies a
                       # RootCauseDiagnosis into the failure taxonomy
+                      # evidence_chain.py — EvidenceChainJudgeProtocol + make_evidence_chain_judge
+                      # factory (same lazy-import pattern) + build_evidence_chain, which synthesizes
+                      # a causal narrative from a RootCauseDiagnosis + FailureCategoryVerdict
                       # providers/         # step_quality_judge_anthropic.py, step_quality_judge_openai.py,
-                      # failure_category_judge_anthropic.py, failure_category_judge_openai.py
-                      # Narrative evidence-chain builder — planned, not yet implemented
+                      # failure_category_judge_anthropic.py, failure_category_judge_openai.py,
+                      # evidence_chain_judge_anthropic.py, evidence_chain_judge_openai.py
   evaluation/         # Golden dataset runner, metric calculators, regression tracker
   api/                # FastAPI app, route handlers (/ask, /flag, /ingest, /documents)
   frontend/           # Streamlit or React query dashboard and trace explorer
@@ -152,6 +156,7 @@ scripts/
   run_eval.py         # Execute full eval suite and print metrics
 tests/
   fixtures/           # Sample files (sample.md, sample.txt, sample.html) + PDF generator
+  unit/test_config.py # Settings defaults/validators
   unit/ingestion/     # test_models, test_loader, test_storage, test_chunker
   unit/retrieval/     # test_embedder, test_vector_store, test_bm25_store, test_indexer,
                       # test_dense_retriever, test_sparse_retriever, test_fusion,
@@ -162,12 +167,15 @@ tests/
                       # providers/         # per-judge-provider tests (citation/completeness × anthropic/openai)
   unit/tracing/       # test_models, test_context, test_instrumentation, test_storage,
                       # test_index, test_persistence
-  unit/analysis/      # test_root_cause, test_failure_categorizer
-                      # providers/         # per-judge-provider tests (step_quality/failure_category × anthropic/openai)
+  unit/analysis/      # test_root_cause, test_failure_categorizer, test_evidence_chain
+                      # providers/         # per-judge-provider tests (step_quality/failure_category/
+                      # evidence_chain_judge × anthropic/openai)
   integration/        # End-to-end pipeline tests against real ChromaDB
 data/
   raw/                # Uploaded source documents
   processed/          # Normalized plaintext + metadata
+  chroma/             # ChromaDB file-based persistence
+  bm25_index.pkl      # Pickled BM25 corpus + chunk_ids
   traces/             # JSON trace files (one per request)
   eval/               # Golden Q&A dataset and flagged failure cases
 ```
@@ -198,9 +206,11 @@ data/
 
 **Confidence score population:** `confidence_from_score(value)` (`src/tracing/instrumentation.py`) linearly maps a continuous `0-1` signal onto `Span.confidence_score`'s `1-5` scale (clamping first, so out-of-range inputs can't violate the field's `ge=1, le=5` constraint). `traced()`'s optional `confidence_fn` parameter is called with the wrapped function's return value once it succeeds, and its result populates `s.confidence_score`; typed `Callable[[Any], int | None]` rather than against `traced()`'s own `T`, because binding `T` from `confidence_fn` too causes mypy to mis-solve `T` before seeing the decorator applied (see `docs/DECISIONS.md`). `mean_similarity_confidence` (`src/retrieval/models.py`) is the shared `confidence_fn` for `DenseRetriever.retrieve`, `SparseRetriever.retrieve`, and all three rerankers' `rerank()` — mean `similarity` across returned hits, `None` if empty. `reciprocal_rank_fusion` can't use this pattern: its returned `similarity` is the fused RRF score (`~1/60` scale, not `[0,1]`), so it calls `mean_similarity_confidence` itself, inside the function, on the *pre-fusion* hits before their `similarity` is overwritten — this is why it uses `span()` directly instead of `@traced`. `verify_citations` derives confidence from the fraction of citations verified `supported=True`; `score_confidence` derives it from `ConfidenceScore.composite`. `build_fallback_response` sets no confidence score — its result is a threshold gate, not a graded signal.
 
-**Backward root-cause span identification:** `find_root_cause_span` (`src/analysis/root_cause.py`) walks a `Trace`'s spans in reverse execution order (`Trace.spans` is a flat list — `Span` has no parent/child field), calling one `StepQualityJudgeProtocol.judge(step, input, output)` per span to score its input→output transformation quality on a 1-5 scale (same scale as `Span.confidence_score`), chosen by `make_step_quality_judge(settings)` — same lazy-import factory pattern as `make_citation_judge`/`make_completeness_judge` (providers: `anthropic`, `openai`). The judge prompt is step-aware: `STEP_QUALITY_CRITERIA` gives each `PipelineStep` its own criteria for what a "reasonable transformation" means, so the judge doesn't apply generation criteria to a ranking step or vice versa. A span scoring at or below `settings.root_cause_quality_threshold` (default `2`) is "unreasonable"; the walk stops at the first (walking backward) span scoring *above* the threshold — that span is healthy and marks the boundary of the failing run. The root cause is the **earliest** span in the contiguous unhealthy tail (the last one remembered before the healthy boundary, or before spans run out), not simply the last-executed bad span — a cascading failure should surface where the corruption originated, not its downstream symptoms. Only the unhealthy tail is judged; spans before an already-healthy boundary are never called. Returns `None` if no span is ever at/below threshold, mirroring `build_fallback_response`'s `Optional`-return convention for "nothing wrong here." The step-quality judge's own LLM call uses a sixth `PipelineStep` value, `"analysis"`, for its span — it doesn't belong to any of the five original pipeline steps since it runs later, over an already-completed trace. Like every other generation-module feature, this is a standalone, directly-callable unit: `find_root_cause_span` takes an already-loaded `Trace` and a judge instance as plain parameters; no orchestrator yet loads a flagged trace and calls this automatically. Failure-type categorization is implemented separately, in `failure_categorizer.py` (see below); the narrative evidence-chain builder remains a separate, later task.
+**Backward root-cause span identification:** `find_root_cause_span` (`src/analysis/root_cause.py`) walks a `Trace`'s spans in reverse execution order (`Trace.spans` is a flat list — `Span` has no parent/child field), calling one `StepQualityJudgeProtocol.judge(step, input, output)` per span to score its input→output transformation quality on a 1-5 scale (same scale as `Span.confidence_score`), chosen by `make_step_quality_judge(settings)` — same lazy-import factory pattern as `make_citation_judge`/`make_completeness_judge` (providers: `anthropic`, `openai`). The judge prompt is step-aware: `STEP_QUALITY_CRITERIA` gives each `PipelineStep` its own criteria for what a "reasonable transformation" means, so the judge doesn't apply generation criteria to a ranking step or vice versa. A span scoring at or below `settings.root_cause_quality_threshold` (default `2`) is "unreasonable"; the walk stops at the first (walking backward) span scoring *above* the threshold — that span is healthy and marks the boundary of the failing run. The root cause is the **earliest** span in the contiguous unhealthy tail (the last one remembered before the healthy boundary, or before spans run out), not simply the last-executed bad span — a cascading failure should surface where the corruption originated, not its downstream symptoms. Only the unhealthy tail is judged; spans before an already-healthy boundary are never called. Returns `None` if no span is ever at/below threshold, mirroring `build_fallback_response`'s `Optional`-return convention for "nothing wrong here." The step-quality judge's own LLM call uses a sixth `PipelineStep` value, `"analysis"`, for its span — it doesn't belong to any of the five original pipeline steps since it runs later, over an already-completed trace. Like every other generation-module feature, this is a standalone, directly-callable unit: `find_root_cause_span` takes an already-loaded `Trace` and a judge instance as plain parameters; no orchestrator yet loads a flagged trace and calls this automatically. Failure-type categorization is implemented separately, in `failure_categorizer.py` (see below); the narrative evidence-chain builder is implemented separately too, in `evidence_chain.py` (see below).
 
 **Failure categorization:** `categorize_failure` (`src/analysis/failure_categorizer.py`) classifies a `RootCauseDiagnosis` (the output of `find_root_cause_span`) into the failure taxonomy: Retrieval Failure, Ranking Failure, Extraction Hallucination, Citation Error, Generation Incomplete, or Context Loss. The mapping from `Span.step` to a category isn't 1:1 — a `"generation"`-step root cause could be any of three categories (Extraction Hallucination, Generation Incomplete, Context Loss) — so classification is delegated to one `FailureCategoryJudgeProtocol.classify(step, input, output, quality_rationale)` call per diagnosis, chosen by `make_failure_category_judge(settings)` — same lazy-import factory pattern as `make_step_quality_judge` (providers: `anthropic`, `openai`). `STEP_TO_PLAUSIBLE_CATEGORIES` restricts the judge to the category subset that's actually plausible for the root-cause span's step (e.g. a `"verification"`-step root cause can only be a Citation Error), stated explicitly in the prompt as a guardrail against invalid picks. The six-category taxonomy has no bucket for `"ingestion"`- or `"analysis"`-step root causes, so `FailureCategory` adds a 7th value, `"other"`, covering both — without it, `categorize_failure` would have no valid answer for a legitimately-returned diagnosis whose root cause is an ingestion-step span. `quality_rationale` passes along the step-quality judge's own explanation (`RootCauseDiagnosis.rationale`) as extra classification signal. Same standalone-unit convention as `find_root_cause_span`: `categorize_failure` takes an already-computed `RootCauseDiagnosis` and a judge instance as plain parameters, and adds no span of its own — only the provider's `classify()` call emits a `step="analysis"` span.
+
+**Evidence chain narrative:** `build_evidence_chain` (`src/analysis/evidence_chain.py`) synthesizes `EvidenceChain.narrative` — a structured causal explanation like "Retrieval ranked the most relevant chunk at position 7 instead of position 1. This propagated to Generation, which selected from the top 5 and missed the answer" — from a `RootCauseDiagnosis` (from `find_root_cause_span`) and a `FailureCategoryVerdict` (from `categorize_failure`, taken as an already-computed parameter, mirroring `categorize_failure`'s own "takes upstream results as plain parameters" convention). Synthesis is delegated to one `EvidenceChainJudgeProtocol.narrate(category, category_rationale, chain)` call per diagnosis, chosen by `make_evidence_chain_judge(settings)` — same lazy-import factory pattern as `make_failure_category_judge`/`make_step_quality_judge` (providers: `anthropic`, `openai`). An LLM-as-judge was chosen over a deterministic string template because a template mechanically concatenating each span's already-isolated per-span rationale can't produce genuine cross-span causal reasoning ("this propagated to X, which then...") — each existing rationale judges its own span in isolation, never the relationship between spans; every other qualitative synthesis in this codebase (citation verification, completeness, step quality, failure categorization) is likewise judge-backed. `RootCauseDiagnosis.evaluated_spans` is last-executed-first (reverse-walk order); `build_evidence_chain` reverses it into chronological, root-cause-first order before building the `chain`, so both the judge prompt and the returned `EvidenceChain.evidence` read in execution order. The protocol takes `list[EvidenceEntry]` — a new, purpose-built, flat dataclass (`step`/`input`/`output`/`score`/`rationale`) owned by `evidence_chain.py` — rather than `root_cause.py`'s `SpanQualityResult`, keeping provider implementations decoupled from that module's dataclasses, the same rationale already used for `FailureCategoryJudgeProtocol.classify` taking scalars instead of `RootCauseDiagnosis` itself. `EvidenceChainVerdict` has a single `narrative` field, unlike every other verdict's decision-plus-rationale shape — here the narrative already is the explanation, so a separate rationale field would be redundant. The prompt builder (`build_evidence_chain_judge_prompt`) wraps an unbounded number of per-entry blocks in nonce-suffixed tags sharing one nonce per call, using indexed tag names (`span-{i}-input`/`span-{i}-output`/`span-{i}-rationale`) rather than the fixed 2-3 named blocks every earlier judge prompt used — `step`/`score` are safe (a closed `Literal` and a `1-5`-bounded `int`) and appear unwrapped. Adds no span of its own, same convention as `find_root_cause_span`/`categorize_failure`.
 
 **Feedback loop:** Human-flagged bad outputs trigger automatic root-cause analysis. Confirmed diagnoses auto-generate new eval test cases (question, correct answer, failure category, failing step), growing the regression dataset over time.
 
@@ -231,7 +241,7 @@ RAW_DATA_DIR=          # Path for uploaded source documents (default: ./data/raw
 PROCESSED_DATA_DIR=    # Path for normalized plaintext + metadata (default: ./data/processed)
 SQLITE_DB_PATH=        # Path for the SQLite trace metadata index (default: ./data/traces.db)
 TRACE_OUTPUT_DIR=      # Directory for per-trace JSON files (default: ./data/traces/)
-LOG_LEVEL=             # DEBUG | INFO | WARNING (default: INFO)
+LOG_LEVEL=             # DEBUG | INFO | WARNING | ERROR | CRITICAL (default: INFO)
 
 # Retrieval
 DENSE_TOP_K=           # Dense (cosine) candidates fetched before fusion (default: 10)
@@ -288,10 +298,16 @@ ROOT_CAUSE_QUALITY_THRESHOLD= # A span scoring at or below this (1-5) is treated
 FAILURE_CATEGORY_JUDGE_PROVIDER=    # anthropic | openai (default: anthropic)
 FAILURE_CATEGORY_JUDGE_MODEL=       # Model name (default: claude-sonnet-4-5 for anthropic; gpt-4o-2024-08-06 for openai)
 FAILURE_CATEGORY_JUDGE_TEMPERATURE= # Sampling temperature for the judge call, 0.0-1.0 (default: 0.0)
+
+# Evidence chain narrative (LLM-as-judge synthesizes a causal narrative from
+# the ordered evidence chain leading to a diagnosed root cause)
+EVIDENCE_CHAIN_JUDGE_PROVIDER=    # anthropic | openai (default: anthropic)
+EVIDENCE_CHAIN_JUDGE_MODEL=       # Model name (default: claude-sonnet-4-5 for anthropic; gpt-4o-2024-08-06 for openai)
+EVIDENCE_CHAIN_JUDGE_TEMPERATURE= # Sampling temperature for the judge call, 0.0-1.0 (default: 0.0)
 ```
 
 ## LLM Judge Cost Management
 
-`CITATION_JUDGE_MODEL`, `ANSWER_COMPLETENESS_JUDGE_MODEL`, `ROOT_CAUSE_JUDGE_MODEL`, and `FAILURE_CATEGORY_JUDGE_MODEL` all default to `claude-sonnet-4-5` ($3/$15 per MTok in/out). For iterative dev/test runs, set all four to `claude-haiku-4-5` (~5x cheaper on output, the dominant cost) — reserve Sonnet for occasional accuracy-checkpoint runs. Root-cause and failure-category judges run once per span/diagnosis during a backward trace walk, so they add up the same way the per-citation and per-answer judges do. A Claude Pro/Max subscription does **not** cover API usage; API calls need a separate console.anthropic.com key with its own billing.
+`CITATION_JUDGE_MODEL`, `ANSWER_COMPLETENESS_JUDGE_MODEL`, `ROOT_CAUSE_JUDGE_MODEL`, `FAILURE_CATEGORY_JUDGE_MODEL`, and `EVIDENCE_CHAIN_JUDGE_MODEL` all default to `claude-sonnet-4-5` ($3/$15 per MTok in/out). For iterative dev/test runs, set all five to `claude-haiku-4-5` (~5x cheaper on output, the dominant cost) — reserve Sonnet for occasional accuracy-checkpoint runs. Root-cause and failure-category judges run once per span/diagnosis during a backward trace walk, so they add up the same way the per-citation and per-answer judges do. The evidence-chain judge runs once per diagnosis (same frequency as the failure-category judge), but its prompt payload scales with the full unhealthy tail's input/output text rather than a single span, making it the most token-heavy of the five per call despite running least often. A Claude Pro/Max subscription does **not** cover API usage; API calls need a separate console.anthropic.com key with its own billing.
 
 **Testing cadence on real data:** run a small batch (10–20 questions) any time `generation/` changes or a new orchestrator step is wired in; run a fuller batch (100+) once per phase completion (end of Phase 2, 3, 4, 6). There's no CI spending real API money and no eval-runner yet (`scripts/run_eval.py` is a Phase 6 stub), so these are manual checkpoints, not per-commit gates.

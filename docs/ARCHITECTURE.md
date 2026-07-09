@@ -1,5 +1,60 @@
 # Architecture Overview
 
+## 2026-07-09 — Phase 4: Evidence Chain Narrative (Complete)
+
+### LLM-as-Judge Causal Narrative Synthesis
+
+Given the `RootCauseDiagnosis` that `find_root_cause_span` (Phase 4, Task 1) produces and the `FailureCategoryVerdict` that `categorize_failure` (Phase 4, Task 2, below) produces, `build_evidence_chain` synthesizes a structured causal explanation — e.g. "Retrieval ranked the most relevant chunk at position 7 instead of position 1. This propagated to Generation, which selected from the top 5 and missed the answer" — plus the ordered input/output evidence backing it. This is the direct continuation of the first two tasks: root-cause finds *which span* broke the pipeline, categorization names *what kind* of failure it was, and this narrates *how it happened*.
+
+**`EvidenceEntry`** (`src/analysis/evidence_chain.py`) — frozen dataclass (`step`, `input`, `output`, `score`, `rationale`), a purpose-built, flat type decoupling provider implementations from `root_cause.py`'s `SpanQualityResult`.
+
+**`EvidenceChainVerdict`** — pydantic `BaseModel` with a single `narrative: str` field — unlike `StepQualityVerdict`/`FailureCategoryVerdict`, there's no separate decision field, since the narrative already is the explanation.
+
+**`EvidenceChainJudgeProtocol`** — `narrate(category: FailureCategory, category_rationale: str, chain: list[EvidenceEntry]) -> EvidenceChainVerdict`, `provider_id: str`. `make_evidence_chain_judge(settings)` returns the configured provider, same lazy-import factory pattern as `make_failure_category_judge`.
+
+**Implemented providers:**
+
+| Provider | Class | File | Default model |
+|---|---|---|---|
+| `anthropic` (default) | `AnthropicEvidenceChainJudge` | `src/analysis/providers/evidence_chain_judge_anthropic.py` | `claude-sonnet-4-5` |
+| `openai` | `OpenAIEvidenceChainJudge` | `src/analysis/providers/evidence_chain_judge_openai.py` | `gpt-4o-2024-08-06` |
+
+**`build_evidence_chain(diagnosis, category_verdict, judge) -> EvidenceChain`** — the standalone entry point:
+- Reverses `diagnosis.evaluated_spans` (last-executed-first) into chronological, root-cause-first order
+- Maps each `SpanQualityResult` to an `EvidenceEntry`
+- Calls `judge.narrate(...)` once and assembles the final `EvidenceChain` (`narrative`, `category`, `category_rationale`, `evidence`)
+- Adds no span of its own — same reasoning as `find_root_cause_span`/`categorize_failure`; only the provider's `narrate()` call emits a `step="analysis"` span
+
+**Settings additions:**
+- `evidence_chain_judge_provider` (default `"anthropic"`)
+- `evidence_chain_judge_model` (default `"claude-sonnet-4-5"`)
+- `evidence_chain_judge_temperature` (default `0.0`)
+
+**Public API:**
+
+```python
+from src.config import settings
+from src.analysis.root_cause import find_root_cause_span, make_step_quality_judge
+from src.analysis.failure_categorizer import categorize_failure, make_failure_category_judge
+from src.analysis.evidence_chain import build_evidence_chain, make_evidence_chain_judge
+
+quality_judge = make_step_quality_judge(settings)
+diagnosis = find_root_cause_span(trace, quality_judge, threshold=settings.root_cause_quality_threshold)
+if diagnosis:
+    category_judge = make_failure_category_judge(settings)
+    category_verdict = categorize_failure(diagnosis, category_judge)
+    narrative_judge = make_evidence_chain_judge(settings)
+    chain = build_evidence_chain(diagnosis, category_verdict, narrative_judge)
+    print(chain.narrative)
+```
+
+**Design notes:**
+- Standalone, directly-callable unit — no orchestrator yet loads a flagged trace, runs root-cause identification, categorizes it, and narrates the result automatically. Wiring it into the API is Phase 7 work.
+- LLM-as-judge over a deterministic template, matching every other qualitative synthesis in this codebase — a template mechanically concatenating each span's already-isolated per-span rationale can't produce genuine cross-span causal reasoning.
+- Multi-entry nonce wrapping (one shared nonce, indexed tag names `span-{i}-input`/`span-{i}-output`/`span-{i}-rationale`) is the first prompt in this codebase wrapping an unbounded number of untrusted blocks in one call. See `docs/DECISIONS.md` for the full rationale.
+
+---
+
 ## 2026-07-09 — Phase 4: Failure-Type Categorization (Complete)
 
 ### LLM-as-Judge Failure Classification
@@ -48,7 +103,7 @@ if diagnosis:
 
 **Design notes:**
 - Standalone, directly-callable unit — no orchestrator yet loads a flagged trace, runs root-cause identification, and categorizes the result automatically. Wiring it into the API is Phase 7 work.
-- The narrative evidence-chain builder (Phase 4, Task 3) is still out of scope.
+- The narrative evidence-chain builder (Phase 4, Task 3) is implemented separately — see the "Evidence Chain Narrative" section above.
 
 ---
 
@@ -104,7 +159,7 @@ if diagnosis:
 **Design notes:**
 - Like `verify_citations`/`score_confidence`/`build_fallback_response`, this is a standalone, directly-callable unit — no orchestrator yet loads a flagged trace and calls this automatically. Wiring it into the API is Phase 7 work.
 - `find_root_cause_span` itself is not wrapped in `@traced` (each `judge.judge()` call already gets its own `span("analysis", ...)` from the provider). Same reasoning as `HybridRetriever` not being separately wrapped.
-- Failure-type categorization (Phase 4, Task 2) is implemented separately — see the "Failure-Type Categorization" section below. The narrative evidence-chain builder (Phase 4, Task 3) remains out of scope.
+- Failure-type categorization (Phase 4, Task 2) is implemented separately — see the "Failure-Type Categorization" section below. The narrative evidence-chain builder (Phase 4, Task 3) is implemented separately too — see the "Evidence Chain Narrative" section above.
 
 ---
 
@@ -774,9 +829,12 @@ src/
   analysis/           # StepQualityJudgeProtocol, make_step_quality_judge factory, 
                       # find_root_cause_span walker (complete)
                       # FailureCategoryJudgeProtocol, make_failure_category_judge factory,
-                      # categorize_failure (complete); narrative evidence chain builder [planned]
+                      # categorize_failure (complete)
+                      # EvidenceChainJudgeProtocol, make_evidence_chain_judge factory,
+                      # build_evidence_chain (complete)
                       # providers/        # step_quality_judge_anthropic.py, step_quality_judge_openai.py,
-                      #                   # failure_category_judge_anthropic.py, failure_category_judge_openai.py
+                      #                   # failure_category_judge_anthropic.py, failure_category_judge_openai.py,
+                      #                   # evidence_chain_judge_anthropic.py, evidence_chain_judge_openai.py
   evaluation/         # Golden dataset runner, metric calculators, regression tracker [planned]
   api/                # FastAPI app, route handlers [planned]
   frontend/           # Streamlit or React query dashboard and trace explorer [planned]

@@ -73,4 +73,4 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 |-----------|--------|
 | Backward root-cause span identification (`find_root_cause_span`, Anthropic/OpenAI step-quality judges) | Done |
 | Failure-type categorization (`categorize_failure`, Anthropic/OpenAI failure-category judges) | Done |
-| Narrative evidence-chain builder | Planned |
+| Narrative evidence-chain builder (`build_evidence_chain`, Anthropic/OpenAI evidence-chain judges) | Done |
