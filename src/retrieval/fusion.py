@@ -1,5 +1,3 @@
-from dataclasses import replace
-
 from src.retrieval.models import VectorStoreHit, mean_similarity_confidence
 from src.tracing.instrumentation import default_serialize, span
 
@@ -37,16 +35,15 @@ def reciprocal_rank_fusion(
             hits_by_id.setdefault(hit.chunk_id, hit)
 
         sorted_ids = sorted(scores, key=scores.__getitem__, reverse=True)[:top_n]
-        result = [
-            replace(hits_by_id[cid], similarity=scores[cid]) for cid in sorted_ids
-        ]
+        # The RRF fused score (`scores`, a ~1/60 weighted-rank sum) selects
+        # and orders the top_n candidates above, but is never written onto a
+        # hit's `similarity` — it isn't a [0,1] quality signal comparable
+        # across retrievers (that's RRF's whole premise: fuse by rank, not
+        # score). Each returned hit keeps its own pre-fusion similarity
+        # (dense cosine, or sparse max-normalized BM25) so downstream
+        # consumers that assume [0,1]-scaled `similarity` get a real signal
+        # whether or not a reranker runs afterward.
+        result = [hits_by_id[cid] for cid in sorted_ids]
         s.output = default_serialize(result)
-        # Confidence comes from the *pre-fusion* similarity of the selected
-        # hits, not the RRF score stamped onto `result` above — RRF scores
-        # are tiny (~1/60) weighted-rank sums, not a [0,1] quality signal,
-        # so feeding them through mean_similarity_confidence would always
-        # bottom out at confidence 1 regardless of retrieval quality.
-        s.confidence_score = mean_similarity_confidence(
-            [hits_by_id[cid] for cid in sorted_ids]
-        )
+        s.confidence_score = mean_similarity_confidence(result)
         return result

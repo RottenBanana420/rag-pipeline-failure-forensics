@@ -55,21 +55,36 @@ class TestRRFScoring:
         result = reciprocal_rank_fusion(dense, sparse, top_n=3)
         assert result[0].chunk_id == "shared"
 
-    def test_no_overlap_merged_and_sorted_descending(self):
+    def test_no_overlap_merged_and_sorted_by_rrf_rank(self):
+        # dense_weight=0.7/sparse_weight=0.3 defaults: d1 (0.7/61) > d2 (0.7/62)
+        # > s1 (0.3/61) > s2 (0.3/62), even though every hit's own similarity
+        # is the same 0.9 default — ordering is RRF-rank-based, not
+        # similarity-based, since similarity no longer carries the RRF score.
         dense = [_hit("d1"), _hit("d2")]
         sparse = [_hit("s1"), _hit("s2")]
         result = reciprocal_rank_fusion(dense, sparse, top_n=4)
-        assert len(result) == 4
-        scores = [h.similarity for h in result]
-        assert scores == sorted(scores, reverse=True)
+        assert [h.chunk_id for h in result] == ["d1", "d2", "s1", "s2"]
 
-    def test_similarity_field_set_to_rrf_score(self):
+    def test_similarity_field_preserves_pre_fusion_similarity(self):
         hits = [_hit("c1", similarity=0.99)]
         result = reciprocal_rank_fusion(
             hits, [], dense_weight=1.0, sparse_weight=0.0, top_n=1
         )
-        expected = 1.0 / (60 + 1)
-        assert result[0].similarity == pytest.approx(expected, rel=1e-6)
+        assert result[0].similarity == pytest.approx(0.99, rel=1e-6)
+
+    def test_similarity_field_never_carries_rrf_score(self):
+        hits = [_hit("c1", similarity=0.99)]
+        result = reciprocal_rank_fusion(
+            hits, [], dense_weight=1.0, sparse_weight=0.0, top_n=1
+        )
+        rrf_score = 1.0 / (60 + 1)
+        assert result[0].similarity != pytest.approx(rrf_score, rel=1e-6)
+
+    def test_similarity_bounded_zero_to_one(self):
+        dense = [_hit(f"d{i}", similarity=0.1 * (i + 1)) for i in range(5)]
+        sparse = [_hit(f"s{i}", similarity=0.1 * (i + 1)) for i in range(5)]
+        result = reciprocal_rank_fusion(dense, sparse, top_n=10)
+        assert all(0.0 <= h.similarity <= 1.0 for h in result)
 
     def test_top_n_limits_output(self):
         dense = [_hit(f"d{i}") for i in range(20)]

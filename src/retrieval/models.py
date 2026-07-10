@@ -26,8 +26,10 @@ def mean_similarity_confidence(hits: list[VectorStoreHit]) -> int | None:
 
     Returns `None` for an empty list — there's no result to be confident (or
     unconfident) about. Assumes `similarity` is already `[0, 1]`-scaled, true
-    for dense/sparse/reranker hits but not for RRF-fused ones (see
-    `reciprocal_rank_fusion`, which derives its own confidence differently).
+    for dense/sparse/reranker hits and for `reciprocal_rank_fusion`'s
+    returned hits too — RRF's own fused ranking score is used internally to
+    select and order candidates but is never written onto a hit's
+    `similarity`, which always stays the real pre-fusion value.
     """
     if not hits:
         return None

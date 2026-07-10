@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.retrieval.dense_retriever import DenseRetriever
 from src.retrieval.hybrid_retriever import HybridRetriever
 from src.retrieval.models import VectorStoreHit
@@ -92,24 +94,37 @@ class TestHybridRetrieverRetrieve:
 class TestHybridRetrieverReranking:
     def test_falls_back_to_rrf_slice_when_reranker_not_provided(self, settings):
         dense = MagicMock(spec=DenseRetriever)
-        dense.retrieve.return_value = [_hit(f"d{i}") for i in range(10)]
+        dense.retrieve.return_value = [_hit(f"d{i}", similarity=0.8) for i in range(10)]
         sparse = MagicMock(spec=SparseRetriever)
-        sparse.retrieve.return_value = [_hit(f"s{i}") for i in range(10)]
+        sparse.retrieve.return_value = [
+            _hit(f"s{i}", similarity=0.8) for i in range(10)
+        ]
         result = HybridRetriever(dense, sparse, settings).retrieve("q")
         assert len(result) == settings.rerank_top_n
+        # Regression guard: similarity must be the real pre-fusion value
+        # (0.8), not the internal RRF fused score (~1/60, still technically
+        # within [0,1] so a bare range check wouldn't catch the bug).
+        assert all(h.similarity == pytest.approx(0.8) for h in result)
 
-    def test_falls_back_to_rrf_slice_when_reranking_disabled(self, settings, monkeypatch):
+    def test_falls_back_to_rrf_slice_when_reranking_disabled(
+        self, settings, monkeypatch
+    ):
         monkeypatch.setattr(settings, "reranking_enabled", False)
         dense = MagicMock(spec=DenseRetriever)
-        dense.retrieve.return_value = [_hit(f"d{i}") for i in range(10)]
+        dense.retrieve.return_value = [_hit(f"d{i}", similarity=0.8) for i in range(10)]
         sparse = MagicMock(spec=SparseRetriever)
-        sparse.retrieve.return_value = [_hit(f"s{i}") for i in range(10)]
+        sparse.retrieve.return_value = [
+            _hit(f"s{i}", similarity=0.8) for i in range(10)
+        ]
         reranker = MagicMock(spec=RerankerProtocol)
 
-        result = HybridRetriever(dense, sparse, settings, reranker=reranker).retrieve("q")
+        result = HybridRetriever(dense, sparse, settings, reranker=reranker).retrieve(
+            "q"
+        )
 
         reranker.rerank.assert_not_called()
         assert len(result) == settings.rerank_top_n
+        assert all(h.similarity == pytest.approx(0.8) for h in result)
 
     def test_delegates_to_reranker_when_enabled(self, settings):
         dense = MagicMock(spec=DenseRetriever)
@@ -120,7 +135,9 @@ class TestHybridRetrieverReranking:
         reranked = [_hit("reranked1"), _hit("reranked2")]
         reranker.rerank.return_value = reranked
 
-        result = HybridRetriever(dense, sparse, settings, reranker=reranker).retrieve("q")
+        result = HybridRetriever(dense, sparse, settings, reranker=reranker).retrieve(
+            "q"
+        )
 
         reranker.rerank.assert_called_once()
         call_args = reranker.rerank.call_args
