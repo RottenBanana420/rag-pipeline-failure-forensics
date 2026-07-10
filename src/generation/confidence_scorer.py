@@ -185,7 +185,7 @@ def _composite_confidence(score: ConfidenceScore) -> int | None:
     return confidence_from_score(score.composite)
 
 
-@traced("generation", confidence_fn=_composite_confidence)
+@traced("generation", confidence_fn=_composite_confidence, is_gate=True)
 def score_confidence(
     query: str,
     answer_text: str,

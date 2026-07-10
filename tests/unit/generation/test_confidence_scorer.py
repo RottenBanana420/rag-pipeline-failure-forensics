@@ -491,6 +491,16 @@ class TestScoreConfidence:
         assert spans[0].step == "generation"
         assert spans[0].error is None
 
+    def test_generation_span_marked_is_gate(self):
+        from src.tracing.context import collect_spans
+
+        judge = FakeCompletenessJudge()
+
+        with collect_spans() as spans:
+            score_confidence("q", "a", [make_hit()], [], judge)
+
+        assert spans[0].is_gate is True
+
     def test_noop_outside_collect_spans(self):
         judge = FakeCompletenessJudge()
 
@@ -566,3 +576,36 @@ class TestScoreConfidence:
 
         generation_spans = [s for s in spans if s.step == "generation"]
         assert len(generation_spans) >= 2
+
+    def test_only_wrapper_span_marked_is_gate_not_judges_inner_span(self):
+        """The judge's own inner span reflects real LLM judgment work, not a
+        deterministic pass-through — only score_confidence's own wrapper
+        span is is_gate=True, so find_root_cause_span can still walk into
+        and judge the judge's inner span if it ever reaches it."""
+        from src.tracing.context import collect_spans
+        from src.tracing.instrumentation import span
+
+        class SpanEmittingFakeCompletenessJudge:
+            def judge(self, question: str, answer: str) -> CompletenessVerdict:
+                with span(
+                    "generation", input=f"question={question!r} answer={answer!r}"
+                ) as s:
+                    verdict = CompletenessVerdict(
+                        complete=True, reasoning="Canned verdict."
+                    )
+                    s.output = verdict.reasoning
+                    return verdict
+
+            @property
+            def provider_id(self) -> str:
+                return "fake-span-emitting/v1"
+
+        judge = SpanEmittingFakeCompletenessJudge()
+
+        with collect_spans() as spans:
+            score_confidence("q", "a", [make_hit()], [], judge)
+
+        gate_spans = [s for s in spans if s.is_gate]
+        non_gate_spans = [s for s in spans if not s.is_gate]
+        assert len(gate_spans) == 1
+        assert len(non_gate_spans) == 1

@@ -55,7 +55,7 @@ def _document_label(hit: VectorStoreHit, *, ambiguous_titles: set[str]) -> str:
     return hit.title
 
 
-@traced("generation")
+@traced("generation", is_gate=True)
 def build_fallback_response(
     hits: list[VectorStoreHit],
     retrieval_confidence: float,
