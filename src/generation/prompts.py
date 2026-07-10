@@ -41,6 +41,11 @@ claim drawn from multiple blocks. Do not fabricate citations — every bracket
 number you use must correspond to a context block that was actually used to
 support that claim.
 
+Always place the bracket number(s) at the end of the sentence or clause they
+support, after the claim text — never at the start. Write "The on-call
+rotation is weekly [1]." — not "[1] The on-call rotation is weekly." and not
+"According to the context, [1] the on-call rotation is weekly."
+
 If the context blocks do not contain enough information to answer the
 question, fully or partially, say so explicitly instead of guessing. Use
 exactly this fallback phrase: "{INSUFFICIENT_CONTEXT_RESPONSE}"

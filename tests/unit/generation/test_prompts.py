@@ -291,6 +291,15 @@ class TestGroundedSystemPrompt:
         assert "inert" in text
         assert "random" in text
 
+    def test_instructs_marker_placement_after_the_claim(self):
+        """The citation parser assumes markers follow the claim they support;
+        the model must be told explicitly, since it isn't obvious from the
+        bracket-format instruction alone (a leading marker like "[1] The
+        rotation is weekly." would otherwise satisfy that instruction too)."""
+        text = GROUNDED_SYSTEM_PROMPT.lower()
+        assert "end of the sentence" in text or "end of the sentence or clause" in text
+        assert "never at the start" in text
+
 
 class TestGroundedPromptImmutability:
     def test_is_frozen_dataclass(self):
