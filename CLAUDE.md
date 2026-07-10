@@ -20,7 +20,7 @@ Production-grade RAG (Retrieval-Augmented Generation) system with built-in obser
 | Tracing | Custom span/trace system (`src/tracing/`) — `ContextVar`-based sink + pydantic `Span`/`Trace` models, not the `opentelemetry` SDK; no such dependency is declared (the `opentelemetry-*` entries in `requirements.txt` are a transitive dependency of `chromadb`'s own telemetry, unrelated to this project's tracing) |
 | Storage | SQLite (trace metadata, `src/tracing/index.py`) + JSON files (full traces, `src/tracing/storage.py`) — implemented; no per-request orchestrator wires these into the pipeline automatically yet (see Module Layout) |
 | API | FastAPI |
-| Frontend | Streamlit or React |
+| Frontend | Streamlit (`src/frontend/`, implemented) — chosen over React because no API/HTTP layer exists yet; the trace view calls `load_trace`/`list_trace_records`/`find_root_cause_span`/etc. directly as Python functions instead of requiring `src/api/main.py` to be built first |
 | Containerization | Docker Compose |
 
 ## Error Resolution & Library Lookups
@@ -40,6 +40,9 @@ pip install -e ".[dev]"
 
 # Add an optional embedding/store provider extra, e.g. OpenAI embeddings or Qdrant
 pip install -e ".[dev,embed-openai]"
+
+# Run the trace view (pipeline flow diagram, color-coded by span status)
+streamlit run src/frontend/app.py
 
 # Run all tests
 pytest
@@ -150,7 +153,22 @@ src/
                       # evidence_chain_judge_anthropic.py, evidence_chain_judge_openai.py
   evaluation/         # Golden dataset runner, metric calculators, regression tracker
   api/                # FastAPI app, route handlers (/ask, /flag, /ingest, /documents)
-  frontend/           # Streamlit or React query dashboard and trace explorer
+  frontend/           # Streamlit trace view (`streamlit run src/frontend/app.py`)
+                      # view_models.py — pure, Streamlit/LLM-independent: node_status (color-coding:
+                      # root-cause span_id match -> red; confidence_score <= threshold -> yellow;
+                      # else green) + build_graph_view_model (Trace -> TraceGraphViewModel, one node
+                      # per span in trace.spans order, not one per distinct step name)
+                      # diagnosis_service.py — run_diagnosis, the on-demand (not automatic) root-cause
+                      # pipeline: find_root_cause_span -> categorize_failure -> build_evidence_chain,
+                      # short-circuiting the latter two when no root cause is found; the only
+                      # src/frontend/ module importing from src/analysis/
+                      # graph_render.py — streamlit_flow (streamlit-flow-component) adapter:
+                      # TraceGraphViewModel -> StreamlitFlowNode/Edge, renders the graph, returns the
+                      # clicked span_id
+                      # detail_panel.py — node-detail panel: input/output/llm_prompt/confidence_score/
+                      # latency_ms/token_count/error, plus an "embeddings not captured" note for
+                      # retrieval/ranking-step spans (Span has no embeddings field)
+                      # app.py — Streamlit entrypoint wiring the above together
 scripts/
   seed_corpus.py      # Index sample docs for local testing
   run_eval.py         # Execute full eval suite and print metrics
@@ -170,6 +188,10 @@ tests/
   unit/analysis/      # test_root_cause, test_failure_categorizer, test_evidence_chain
                       # providers/         # per-judge-provider tests (step_quality/failure_category/
                       # evidence_chain_judge × anthropic/openai)
+  unit/frontend/      # test_view_models (color-coding + view-model construction),
+                      # test_diagnosis_service (fake judges, no real API calls) — graph_render.py/
+                      # detail_panel.py/app.py are Streamlit UI and verified manually instead
+                      # (`streamlit run src/frontend/app.py`), not by automated tests
   integration/        # End-to-end pipeline tests against real ChromaDB
 data/
   raw/                # Uploaded source documents
@@ -211,6 +233,8 @@ data/
 **Failure categorization:** `categorize_failure` (`src/analysis/failure_categorizer.py`) classifies a `RootCauseDiagnosis` (the output of `find_root_cause_span`) into the failure taxonomy: Retrieval Failure, Ranking Failure, Extraction Hallucination, Citation Error, Generation Incomplete, or Context Loss. The mapping from `Span.step` to a category isn't 1:1 — a `"generation"`-step root cause could be any of three categories (Extraction Hallucination, Generation Incomplete, Context Loss) — so classification is delegated to one `FailureCategoryJudgeProtocol.classify(step, input, output, quality_rationale)` call per diagnosis, chosen by `make_failure_category_judge(settings)` — same lazy-import factory pattern as `make_step_quality_judge` (providers: `anthropic`, `openai`). `STEP_TO_PLAUSIBLE_CATEGORIES` restricts the judge to the category subset that's actually plausible for the root-cause span's step (e.g. a `"verification"`-step root cause can only be a Citation Error), stated explicitly in the prompt as a guardrail against invalid picks. The six-category taxonomy has no bucket for `"ingestion"`- or `"analysis"`-step root causes, so `FailureCategory` adds a 7th value, `"other"`, covering both — without it, `categorize_failure` would have no valid answer for a legitimately-returned diagnosis whose root cause is an ingestion-step span. `quality_rationale` passes along the step-quality judge's own explanation (`RootCauseDiagnosis.rationale`) as extra classification signal. Same standalone-unit convention as `find_root_cause_span`: `categorize_failure` takes an already-computed `RootCauseDiagnosis` and a judge instance as plain parameters, and adds no span of its own — only the provider's `classify()` call emits a `step="analysis"` span.
 
 **Evidence chain narrative:** `build_evidence_chain` (`src/analysis/evidence_chain.py`) synthesizes `EvidenceChain.narrative` — a structured causal explanation like "Retrieval ranked the most relevant chunk at position 7 instead of position 1. This propagated to Generation, which selected from the top 5 and missed the answer" — from a `RootCauseDiagnosis` (from `find_root_cause_span`) and a `FailureCategoryVerdict` (from `categorize_failure`, taken as an already-computed parameter, mirroring `categorize_failure`'s own "takes upstream results as plain parameters" convention). Synthesis is delegated to one `EvidenceChainJudgeProtocol.narrate(category, category_rationale, chain)` call per diagnosis, chosen by `make_evidence_chain_judge(settings)` — same lazy-import factory pattern as `make_failure_category_judge`/`make_step_quality_judge` (providers: `anthropic`, `openai`). An LLM-as-judge was chosen over a deterministic string template because a template mechanically concatenating each span's already-isolated per-span rationale can't produce genuine cross-span causal reasoning ("this propagated to X, which then...") — each existing rationale judges its own span in isolation, never the relationship between spans; every other qualitative synthesis in this codebase (citation verification, completeness, step quality, failure categorization) is likewise judge-backed. `RootCauseDiagnosis.evaluated_spans` is last-executed-first (reverse-walk order); `build_evidence_chain` reverses it into chronological, root-cause-first order before building the `chain`, so both the judge prompt and the returned `EvidenceChain.evidence` read in execution order. The protocol takes `list[EvidenceEntry]` — a new, purpose-built, flat dataclass (`step`/`input`/`output`/`score`/`rationale`) owned by `evidence_chain.py` — rather than `root_cause.py`'s `SpanQualityResult`, keeping provider implementations decoupled from that module's dataclasses, the same rationale already used for `FailureCategoryJudgeProtocol.classify` taking scalars instead of `RootCauseDiagnosis` itself. `EvidenceChainVerdict` has a single `narrative` field, unlike every other verdict's decision-plus-rationale shape — here the narrative already is the explanation, so a separate rationale field would be redundant. The prompt builder (`build_evidence_chain_judge_prompt`) wraps an unbounded number of per-entry blocks in nonce-suffixed tags sharing one nonce per call, using indexed tag names (`span-{i}-input`/`span-{i}-output`/`span-{i}-rationale`) rather than the fixed 2-3 named blocks every earlier judge prompt used — `step`/`score` are safe (a closed `Literal` and a `1-5`-bounded `int`) and appear unwrapped. Adds no span of its own, same convention as `find_root_cause_span`/`categorize_failure`.
+
+**Trace view (frontend):** `src/frontend/app.py` (`streamlit run src/frontend/app.py`) is a Streamlit app rendering a `Trace`'s spans as a left-to-right flow diagram, color-coded green/yellow/red, with a click-through node-detail panel. Streamlit was chosen over React specifically because no API/HTTP layer exists yet (`src/api/` is still a Phase 7 placeholder) — the app calls `load_trace`/`list_trace_records`/`find_root_cause_span`/`categorize_failure`/`build_evidence_chain` directly as Python functions, versus React which would require standing up `src/api/main.py` from scratch first, turning "build a trace view" into "build Phase 5 and Phase 7 at once." `Trace.spans` is a flat, execution-order list with no parent/child field, and multiple spans can share the same `step` (e.g. `HybridRetriever`'s dense/sparse retrieval legs are both `step="retrieval"`), so `build_graph_view_model` (`src/frontend/view_models.py`) makes **each span its own node**, positioned in `trace.spans` order and connected by sequential edges — not one node per distinct step name. `node_status` colors a node red if it matches the current `RootCauseDiagnosis.root_cause_span.span_id` (always wins, regardless of `confidence_score`), else yellow if `Span.confidence_score <= settings.root_cause_quality_threshold` (reusing that setting's existing 1-5 "at or below is unreasonable" semantics rather than inventing a parallel threshold), else green — this needs no LLM call, so opening any trace is free. Root-cause coloring only appears after an explicit "Diagnose root cause" button click, which calls `run_diagnosis` (`src/frontend/diagnosis_service.py`, the only `src/frontend/` module importing from `src/analysis/`) — real per-span LLM judge spend, per the "LLM Judge Cost Management" section below, so it must be deliberate, not automatic on trace load. The resulting `DiagnosisResult` is cached in `st.session_state` keyed by `trace_id`, so revisiting the same trace within a session doesn't re-spend. The node graph is rendered via `streamlit_flow` (`streamlit-flow-component`, a new `frontend` extra in `pyproject.toml`), chosen via Context7 lookup over `streamlit-agraph` (undocumented there — a maintenance-signal red flag); its `get_node_on_click`/`StreamlitFlowState.selected_id` click detection, per-node `style` dict, and `ManualLayout` positioning map directly onto this flat/ordered span-list model. `Span` has no embeddings/vector field, so `detail_panel.py` shows an explicit "embeddings not captured in this trace" note for retrieval/ranking-step spans rather than extending `Span` — that would mean touching tracing instrumentation across every retrieval/ranking provider and storing potentially large vectors in every trace JSON, out of scope for a UI-only task. See `docs/DECISIONS.md` for the streamlit_flow `key=`/`st.session_state` collision gotcha hit during implementation.
 
 **Feedback loop:** Human-flagged bad outputs trigger automatic root-cause analysis. Confirmed diagnoses auto-generate new eval test cases (question, correct answer, failure category, failing step), growing the regression dataset over time.
 
