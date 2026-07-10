@@ -177,6 +177,56 @@ class TestTracedDecorator:
 
         assert spans[0].confidence_score is None
 
+    def test_is_gate_defaults_to_false(self):
+        from src.tracing.instrumentation import traced
+
+        @traced("retrieval")
+        def retrieve(query: str) -> str:
+            return query
+
+        with collect_spans() as spans:
+            retrieve("q")
+
+        assert spans[0].is_gate is False
+
+    def test_is_gate_true_sets_span_flag(self):
+        from src.tracing.instrumentation import traced
+
+        @traced("generation", is_gate=True)
+        def score(query: str) -> str:
+            return query
+
+        with collect_spans() as spans:
+            score("q")
+
+        assert spans[0].is_gate is True
+
+    def test_is_gate_true_recorded_even_on_exception(self):
+        from src.tracing.instrumentation import traced
+
+        @traced("generation", is_gate=True)
+        def flaky() -> None:
+            raise ValueError("nope")
+
+        with collect_spans() as spans, pytest.raises(ValueError, match="nope"):
+            flaky()
+
+        assert spans[0].is_gate is True
+        assert spans[0].error == "ValueError: nope"
+
+    def test_is_gate_combined_with_confidence_fn(self):
+        from src.tracing.instrumentation import traced
+
+        @traced("generation", confidence_fn=lambda result: len(result), is_gate=True)
+        def score(query: str) -> list[str]:
+            return [query, query]
+
+        with collect_spans() as spans:
+            score("q")
+
+        assert spans[0].is_gate is True
+        assert spans[0].confidence_score == 2
+
 
 class TestDefaultSerialize:
     def test_serializes_plain_dict(self):

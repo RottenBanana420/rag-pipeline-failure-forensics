@@ -100,6 +100,20 @@ class TestSpanValidation:
         restored = Span.model_validate_json(span.model_dump_json())
         assert restored == span
 
+    def test_is_gate_defaults_to_false(self):
+        span = Span(**_valid_span_kwargs())
+        assert span.is_gate is False
+
+    def test_is_gate_can_be_set_true(self):
+        span = Span(**_valid_span_kwargs(is_gate=True))
+        assert span.is_gate is True
+
+    def test_round_trip_json_with_is_gate(self):
+        span = Span(**_valid_span_kwargs(is_gate=True))
+        restored = Span.model_validate_json(span.model_dump_json())
+        assert restored == span
+        assert restored.is_gate is True
+
 
 def _valid_trace_kwargs(**overrides: object) -> dict[str, object]:
     base: dict[str, object] = {"status": "success"}

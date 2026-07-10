@@ -29,6 +29,7 @@ class _SpanBuilder:
     llm_prompt: str | None = None
     token_count: int | None = None
     confidence_score: int | None = None
+    is_gate: bool = False
 
 
 def _serialize_item(value: object) -> object:
@@ -101,13 +102,16 @@ def span(step: PipelineStep, input: str) -> Iterator[_SpanBuilder]:
                     token_count=builder.token_count,
                     latency_ms=latency_ms,
                     confidence_score=builder.confidence_score,
+                    is_gate=builder.is_gate,
                     error=error,
                 )
             )
 
 
 def traced(
-    step: PipelineStep, confidence_fn: Callable[[Any], int | None] | None = None
+    step: PipelineStep,
+    confidence_fn: Callable[[Any], int | None] | None = None,
+    is_gate: bool = False,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """Decorator: wrap a function/method so each call records a `Span`.
 
@@ -130,6 +134,14 @@ def traced(
     (`Never`, when `confidence_fn` is omitted; the confidence_fn's own
     parameter type, e.g. `Sequence[X]`, when given) that doesn't match the
     decorated function's actual return type.
+
+    If `is_gate` is `True`, the recorded span is marked `Span.is_gate=True` —
+    `find_root_cause_span` (`src/analysis/root_cause.py`) skips it entirely
+    rather than judging it, since a deterministic gate span (e.g.
+    `score_confidence`, `build_fallback_response`) mechanically transforms
+    already-computed upstream signals and would otherwise mask genuine
+    upstream corruption by looking "reasonable" regardless of whether its
+    inputs are healthy. Defaults to `False`.
     """
 
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
@@ -142,6 +154,7 @@ def traced(
             arguments = dict(bound.arguments)
             arguments.pop("self", None)
             with span(step, input=default_serialize(arguments)) as s:
+                s.is_gate = is_gate
                 result = func(*args, **kwargs)
                 s.output = default_serialize(result)
                 if confidence_fn is not None:

@@ -21,6 +21,7 @@ class Span(BaseModel):
     latency_ms: float = Field(ge=0.0)
     confidence_score: int | None = Field(default=None, ge=1, le=5)
     error: str | None = None
+    is_gate: bool = False  # deterministic gate span (see docs/DECISIONS.md) — skipped by find_root_cause_span
 
 
 TraceStatus = Literal["success", "failure", "degraded"]
