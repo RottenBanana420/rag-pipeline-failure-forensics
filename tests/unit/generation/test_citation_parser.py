@@ -164,3 +164,50 @@ class TestParseCitations:
         # "Trailing text." comes after the citation, so it's not a claim.
         assert len(result) == 1
         assert result[0].claim_text == "Final claim"
+
+    def test_leading_marker_with_comma_lookahead(self):
+        """A marker after a lead-in comma pulls the real claim in from ahead of it."""
+        text = "According to the context provided, [1] the on-call rotation is weekly."
+
+        result = parse_citations(text)
+
+        assert len(result) == 1
+        assert (
+            result[0].claim_text
+            == "According to the context provided, the on-call rotation is weekly."
+        )
+        assert result[0].chunk_indices == [1]
+
+    def test_leading_marker_at_start_of_string(self):
+        """A marker with nothing before it scans forward for the claim it supports."""
+        text = "[1] The rotation is weekly."
+
+        result = parse_citations(text)
+
+        assert len(result) == 1
+        assert result[0].claim_text == "The rotation is weekly."
+        assert result[0].chunk_indices == [1]
+
+    def test_leading_marker_bounded_by_next_citation_cascades(self):
+        """Known limitation: a leading marker with no terminator before the next
+        citation run consumes up to that run, leaving the next run's own
+        preceding text empty — so it is treated as leading too."""
+        text = "According to X, [1] rotation is weekly [2] end."
+
+        result = parse_citations(text)
+
+        assert len(result) == 2
+        assert result[0].claim_text == "According to X, rotation is weekly"
+        assert result[0].chunk_indices == [1]
+        assert result[1].claim_text == "end."
+        assert result[1].chunk_indices == [2]
+
+    def test_leading_marker_scans_to_end_of_string(self):
+        """No terminal punctuation and no following citation: scan runs to the end."""
+        text = "According to the docs, [1] the rotation is weekly"
+
+        result = parse_citations(text)
+
+        assert len(result) == 1
+        assert result[0].claim_text == "According to the docs, the rotation is weekly"
+        assert result[0].chunk_indices == [1]
