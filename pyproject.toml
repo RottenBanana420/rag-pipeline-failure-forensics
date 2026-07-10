@@ -42,6 +42,7 @@ embed-cohere = ["cohere>=5.0"]
 embed-local = ["sentence-transformers>=3.0"]
 llm-anthropic = ["anthropic>=0.100.0"]
 store-qdrant = ["qdrant-client>=1.9"]
+frontend = ["streamlit>=1.38", "streamlit-flow-component>=1.5"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
