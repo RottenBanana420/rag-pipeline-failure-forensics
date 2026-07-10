@@ -531,6 +531,83 @@ class TestFindRootCauseSpan:
         assert result.score == 1
         assert result.rationale == "Completely broken."
 
+    def test_gate_span_is_skipped_and_never_judged(self):
+        """Reproduces the reported masking scenario: a deterministic gate
+        span (e.g. score_confidence) sits after a genuinely corrupted
+        upstream span. Even though the judge's canned verdict for the gate
+        span would score it healthy if called, the walker must skip it
+        entirely and keep walking back to find the real root cause."""
+        bad_retrieval = make_span(
+            step="retrieval", input="corrupted-hits", output="office coffee chunks"
+        )
+        gate_span = make_span(
+            step="generation",
+            input="gate-in",
+            output="gate-out",
+            is_gate=True,
+        )
+        trace = Trace(spans=[bad_retrieval, gate_span], status="failure")
+        judge = FakeStepQualityJudge(
+            verdicts=[StepQualityVerdict(score=1, rationale="bad retrieval")]
+        )
+
+        result = find_root_cause_span(trace, judge, threshold=2)
+
+        assert result is not None
+        assert result.root_cause_span is bad_retrieval
+        assert len(judge.calls) == 1
+        assert all(call[1] != "gate-in" for call in judge.calls)
+
+    def test_gate_span_never_appears_in_evaluated_spans(self):
+        bad_retrieval = make_span(step="retrieval", input="bad-in")
+        gate_span = make_span(step="generation", input="gate-in", is_gate=True)
+        trace = Trace(spans=[bad_retrieval, gate_span], status="failure")
+        judge = FakeStepQualityJudge(
+            verdicts=[StepQualityVerdict(score=1, rationale="bad")]
+        )
+
+        result = find_root_cause_span(trace, judge, threshold=2)
+
+        assert result is not None
+        assert gate_span not in [r.span for r in result.evaluated_spans]
+
+    def test_all_gate_spans_returns_none(self):
+        spans = [
+            make_span(step="generation", input="a", is_gate=True),
+            make_span(step="generation", input="b", is_gate=True),
+        ]
+        trace = Trace(spans=spans, status="failure")
+        judge = FakeStepQualityJudge()
+
+        result = find_root_cause_span(trace, judge, threshold=2)
+
+        assert result is None
+        assert judge.calls == []
+
+    def test_gate_span_sandwiched_mid_walk_is_transparently_skipped(self):
+        """A gate span sits between an earlier healthy boundary and a later
+        (last-executed) unhealthy span. The walker must judge the unhealthy
+        span, transparently skip the gate span in between (no judge call),
+        and then correctly stop at the earlier healthy span — exercising
+        the skip mid-walk, not just at the trace's start or end."""
+        healthy = make_span(step="ingestion", input="healthy-in")
+        gate_span = make_span(step="generation", input="gate-in", is_gate=True)
+        unhealthy = make_span(step="retrieval", input="unhealthy-in")
+        trace = Trace(spans=[healthy, gate_span, unhealthy], status="failure")
+        judge = FakeStepQualityJudge(
+            verdicts=[
+                StepQualityVerdict(score=1, rationale="unhealthy"),
+                StepQualityVerdict(score=5, rationale="healthy"),
+            ]
+        )
+
+        result = find_root_cause_span(trace, judge, threshold=2)
+
+        assert result is not None
+        assert result.root_cause_span is unhealthy
+        assert len(judge.calls) == 2
+        assert all(call[1] != "gate-in" for call in judge.calls)
+
     def test_walker_is_not_traced(self):
         """The walker itself adds no span of its own — every recorded span
         comes from the judge (mirroring how HybridRetriever.retrieve is left

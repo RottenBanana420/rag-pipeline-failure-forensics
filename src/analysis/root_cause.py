@@ -14,6 +14,15 @@ step feeding bad input to generation and verification) should report where
 the corruption originated, not its downstream symptoms. Only that unhealthy
 tail is judged — spans before an already-healthy boundary are never called.
 
+Spans with `Span.is_gate=True` (deterministic post-processing/gating
+computations over already-computed upstream signals, e.g. `score_confidence`,
+`build_fallback_response`) are skipped entirely during the walk — never
+judged, never a candidate, never able to end the walk. They're structurally
+incapable of reflecting whether their *inputs* are healthy (their output is
+a pure, internally-consistent function of their input by construction), so
+treating one as a healthy boundary would prematurely stop the walk before it
+ever reaches the genuinely corrupted upstream span. See `docs/DECISIONS.md`.
+
 This module is a standalone, directly-callable unit — like
 `citation_verifier.py`/`confidence_scorer.py`, no orchestrator exists yet to
 load a trace and call this automatically. `find_root_cause_span` takes an
@@ -251,14 +260,22 @@ def find_root_cause_span(
     earlier is judged). If its score is at or below `threshold`, remember it
     as the current root-cause candidate and continue to the previous span.
 
-    Returns `None` if `trace.spans` is empty, or if the last span is already
-    healthy (no candidate was ever set) — mirrors
-    `build_fallback_response`'s `Optional`-return convention for "nothing
-    wrong here".
+    A span with `is_gate=True` is skipped without calling the judge: it is
+    not appended to `evaluated_spans`, never becomes the candidate, and
+    never ends the walk — the walk simply continues to the previous span as
+    if the gate span were not there. This costs zero judge calls for gate
+    spans, consistent with only judging what's necessary.
+
+    Returns `None` if `trace.spans` is empty, if every span is a gate span,
+    or if the last non-gate span walked to is already healthy (no candidate
+    was ever set) — mirrors `build_fallback_response`'s `Optional`-return
+    convention for "nothing wrong here".
     """
     evaluated: list[SpanQualityResult] = []
     candidate: SpanQualityResult | None = None
     for span in reversed(trace.spans):
+        if span.is_gate:
+            continue
         verdict = judge.judge(step=span.step, input=span.input, output=span.output)
         result = SpanQualityResult(
             span=span, score=verdict.score, rationale=verdict.rationale
