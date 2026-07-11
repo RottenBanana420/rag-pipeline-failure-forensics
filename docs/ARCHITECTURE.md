@@ -1,5 +1,53 @@
 # Architecture Overview
 
+## 2026-07-11 — Phase 5: Trace View & Diff View (Complete)
+
+### Streamlit Trace Explorer + Failure Diff View
+
+`src/frontend/` (`streamlit run src/frontend/app.py`) turns a persisted `Trace` into an interactive flow diagram with click-through span detail, on-demand backward root-cause diagnosis (Phase 4's three functions, wired together for the first time by anything in the codebase), and — for failed/degraded traces — a side-by-side diff against a human-entered "expected output." Streamlit was chosen over React specifically because no API/HTTP layer exists yet (`src/api/` is still a Phase 7 placeholder); the app calls `load_trace`/`list_trace_records`/`find_root_cause_span`/`categorize_failure`/`build_evidence_chain` directly as Python functions instead of requiring `src/api/main.py` to be built first.
+
+**Trace view (`app.py`, `view_models.py`, `graph_render.py`, `detail_panel.py`, `diagnosis_service.py`):**
+- `build_graph_view_model(trace, root_cause_span_id, low_confidence_threshold) -> TraceGraphViewModel` (`view_models.py`) makes **each span its own node** in `trace.spans` order, connected by sequential edges — not one node per distinct step name, since `Trace.spans` is a flat list with no parent/child field and multiple spans can share one `step` (e.g. `HybridRetriever`'s dense/sparse legs are both `"retrieval"`).
+- `node_status(span, root_cause_span_id, low_confidence_threshold) -> NodeStatus` colors a node red if it matches the current diagnosis's root-cause span (always wins), else yellow if `confidence_score <= low_confidence_threshold`, else green — no LLM call, so opening any trace is free.
+- The node graph renders via `streamlit_flow` (`streamlit-flow-component`, new `frontend` extra), chosen over `streamlit-agraph` after a Context7 lookup showed the latter has no documentation coverage there (a maintenance-signal red flag). `graph_render.render_graph` returns the clicked `span_id`; `detail_panel.render(span, status, order)` shows input/output/LLM prompt/confidence/latency/tokens/error, plus an explicit "embeddings not captured" note for retrieval/ranking spans (`Span` has no embeddings field — extending it would mean touching instrumentation across every retrieval/ranking provider, out of scope for a UI-only task).
+- Root-cause coloring requires an explicit "Diagnose root cause" click — real LLM spend, per this doc's cost-management guidance — which calls `diagnosis_service.run_diagnosis(trace, settings)`: `find_root_cause_span` → `categorize_failure` → `build_evidence_chain`, short-circuiting the latter two when no root cause is found. The result is cached in `st.session_state` keyed by `trace_id`, so revisiting the same trace within a session doesn't re-spend. This is the first code in the repo to wire all three Phase 4 functions together end-to-end (see the "Superseded claims"/design notes on the Phase 4 entries above, which previously said nothing calls them automatically).
+
+**Diff view (`diff_panel.py`, `corrections.py`, plus additions to `view_models.py`):** the project spec asks for a per-span diff against "the golden dataset or human correction" — neither existed in code (`src/evaluation/` is still a 1-line Phase 6 placeholder, `data/eval/` was empty). This entry implements only the "human correction" half:
+- `corrections.py`: `save_correction`/`load_correction(trace_id, span_id, corrections_dir)` persist a human-typed expected output as one JSON file per trace (`data/eval/corrections/{trace_id}.json` → `{span_id: expected_output}`), mirroring `src.tracing.storage`'s one-file-per-id convention.
+- `view_models.py` additions: `DiffSegment` (`text`, `tag: Literal["equal", "expected_only", "produced_only"]`), `SpanDiffViewModel`, and `build_span_diff_view_model(span, expected_output) -> SpanDiffViewModel` — a word-level diff via stdlib `difflib.SequenceMatcher` over whitespace-preserving tokens (the same technique `difflib.HtmlDiff`/`git diff --word-diff` use, no new dependency). Two independent segment lists are built from one set of opcodes: `expected_segments` from the `a`-side ranges, `produced_segments` from the `b`-side ranges — letting the UI show a clean "removed" side and "added" side instead of one interleaved diff. Returns `None` segments when no correction has been entered, rather than diffing against `""`.
+- `diff_panel.render(span, trace_id, settings)`: three columns (received / produced / should-have-produced). Computes the diff from the **live** text-area value, not the last-saved value, so highlighting updates immediately on blur rather than requiring a save round-trip; "Save correction" (`st.toast(...)` on click, no `st.rerun()`) is purely for persistence. Segments render via `st.html()` — not `st.markdown(unsafe_allow_html=True)`, which would run the diff text through Markdown parsing first and corrupt literal `*`/`_` characters — each segment's text passed through `html.escape()` first (untrusted span/correction text), wrapped in a `white-space:pre-wrap` container so whitespace-only divergence doesn't visually collapse. `st.html` postdates the project's original `streamlit>=1.38` floor, so `pyproject.toml`'s `frontend` extra now requires `streamlit>=1.41`.
+
+**Settings additions:**
+- `human_corrections_dir` (default `Path("./data/eval/corrections")`)
+
+**Public API:**
+
+```python
+from src.config import settings
+from src.tracing.storage import load_trace
+from src.tracing.index import list_trace_records
+from src.frontend.view_models import build_graph_view_model, build_span_diff_view_model
+from src.frontend.diagnosis_service import run_diagnosis
+from src.frontend.corrections import load_correction
+
+trace = load_trace(trace_id, settings.trace_output_dir)
+view_model = build_graph_view_model(trace, root_cause_span_id=None, low_confidence_threshold=settings.root_cause_quality_threshold)
+
+diagnosis_result = run_diagnosis(trace, settings)  # real LLM spend
+if diagnosis_result.diagnosis is not None:
+    correction = load_correction(trace_id, diagnosis_result.diagnosis.root_cause_span.span_id, settings.human_corrections_dir)
+    diff = build_span_diff_view_model(diagnosis_result.diagnosis.root_cause_span, correction)
+```
+
+**Design notes:**
+- Not the full Phase 6 golden dataset (50+ hand-written Q&A pairs, automated eval metrics, regression tracking) — that remains a materially larger, separate concern. The correction store is real, reusable infrastructure Phase 6 item 4 ("auto-generate eval cases from production flags") can read later, without scope-creeping into Phase 6 itself now.
+- Widget-key design verified via Context7 against Streamlit's own docs on `session_state` widget-key behavior: `diff_panel.py`'s text-area key is scoped to `f"expected_output::{trace_id}::{span_id}"` (both globally unique), so there's no cross-span stale-value collision of the kind `docs/DECISIONS.md`'s streamlit_flow `key=` gotcha (2026-07-09 entry, above) already hit once in `graph_render.py`.
+- A post-implementation review (documented in `docs/DECISIONS.md`, 2026-07-11) found and fixed three issues after the initial pass: the `st.markdown`/Markdown-parsing bug above, the whitespace-collapse bug above, and a UX gap where the diff only updated after clicking Save rather than live.
+- Only `diagnosis_service.py` imports from `src/analysis/` — isolates the real LLM-spend surface to one module, so it's auditable at a glance which frontend code can trigger judge calls.
+- `view_models.py`, `corrections.py`, and `diagnosis_service.py` (with fake judges, same pattern as `tests/unit/analysis/`) are unit tested (`tests/unit/frontend/`); `graph_render.py`/`detail_panel.py`/`diff_panel.py`/`app.py` are Streamlit UI, verified manually via `streamlit run src/frontend/app.py` (including a Playwright-driven browser session during the post-implementation review, to confirm the `st.html`/whitespace/live-diff fixes actually rendered correctly, not just passed lint/mypy).
+
+---
+
 ## 2026-07-09 — Phase 4: Evidence Chain Narrative (Complete)
 
 ### LLM-as-Judge Causal Narrative Synthesis
@@ -49,7 +97,7 @@ if diagnosis:
 ```
 
 **Design notes:**
-- Standalone, directly-callable unit — no orchestrator yet loads a flagged trace, runs root-cause identification, categorizes it, and narrates the result automatically. Wiring it into the API is Phase 7 work.
+- Standalone, directly-callable unit at the module level — no `src/api/` orchestrator yet loads a flagged trace, runs root-cause identification, categorizes it, and narrates the result automatically over HTTP (Phase 7 work). It is wired together end-to-end from the UI though: `src/frontend/diagnosis_service.py`'s `run_diagnosis` calls `find_root_cause_span` → `categorize_failure` → `build_evidence_chain` on an explicit "Diagnose root cause" button click (see the "Phase 5: Trace View & Diff View" entry below).
 - LLM-as-judge over a deterministic template, matching every other qualitative synthesis in this codebase — a template mechanically concatenating each span's already-isolated per-span rationale can't produce genuine cross-span causal reasoning.
 - Multi-entry nonce wrapping (one shared nonce, indexed tag names `span-{i}-input`/`span-{i}-output`/`span-{i}-rationale`) is the first prompt in this codebase wrapping an unbounded number of untrusted blocks in one call. See `docs/DECISIONS.md` for the full rationale.
 
@@ -102,7 +150,7 @@ if diagnosis:
 ```
 
 **Design notes:**
-- Standalone, directly-callable unit — no orchestrator yet loads a flagged trace, runs root-cause identification, and categorizes the result automatically. Wiring it into the API is Phase 7 work.
+- Standalone, directly-callable unit at the module level — no `src/api/` orchestrator yet loads a flagged trace, runs root-cause identification, and categorizes the result automatically over HTTP (that's Phase 7 work). It is however wired together end-to-end from the UI: `src/frontend/diagnosis_service.py`'s `run_diagnosis` calls `find_root_cause_span` → `categorize_failure` → `build_evidence_chain` on an explicit "Diagnose root cause" button click (see the "Phase 5: Trace View & Diff View" entry below).
 - The narrative evidence-chain builder (Phase 4, Task 3) is implemented separately — see the "Evidence Chain Narrative" section above.
 
 ---
@@ -128,10 +176,11 @@ When a `Trace` is flagged as failed, `find_root_cause_span` walks its spans in r
 
 **`find_root_cause_span(trace, judge, threshold) -> RootCauseDiagnosis | None`** — the walker function:
 - Iterates `trace.spans` in reverse execution order
-- Calls `judge.judge(step, input, output)` per span
+- Skips any span with `Span.is_gate=True` entirely (no judge call, no candidate update, can never end the walk) — gate spans (`score_confidence`, `build_fallback_response`) mechanically transform already-computed upstream signals and are internally self-consistent by construction, so a judge would score one "reasonable" regardless of whether the upstream data it received was already corrupted; treating one as a healthy boundary could prematurely mask a genuinely corrupted upstream span. See `docs/DECISIONS.md` (2026-07-09, "Gate Spans Can Mask Root-Cause Detection") for the bug this fixes.
+- Calls `judge.judge(step, input, output)` per non-gate span
 - A span scoring `<= threshold` (default 2) is "unreasonable"
-- Remembers the candidate as the root cause; stops when a span scores `> threshold` (healthy boundary found)
-- Returns `None` if no span is ever at/below threshold (nothing wrong)
+- Remembers the candidate as the root cause; stops when a non-gate span scores `> threshold` (healthy boundary found)
+- Returns `None` if no non-gate span is ever at/below threshold (nothing wrong)
 - Returns `RootCauseDiagnosis` with `root_cause_span`, `score`, `rationale`, and `evaluated_spans` (the judged unhealthy tail, in reverse-walk order)
 
 **Cascade handling:** Only the contiguous unhealthy tail is judged. If a healthy span is found, earlier spans (before the boundary) are never judged. This ensures the root cause surfaces where the corruption originated, not at downstream symptoms.
@@ -157,9 +206,10 @@ if diagnosis:
 ```
 
 **Design notes:**
-- Like `verify_citations`/`score_confidence`/`build_fallback_response`, this is a standalone, directly-callable unit — no orchestrator yet loads a flagged trace and calls this automatically. Wiring it into the API is Phase 7 work.
+- Like `verify_citations`/`score_confidence`/`build_fallback_response`, this is a standalone, directly-callable unit at the module level — no `src/api/` orchestrator yet loads a flagged trace and calls this automatically over HTTP (Phase 7 work). It is wired together end-to-end from the UI though: `src/frontend/diagnosis_service.py`'s `run_diagnosis` calls this on an explicit "Diagnose root cause" button click (see the "Phase 5: Trace View & Diff View" entry below).
 - `find_root_cause_span` itself is not wrapped in `@traced` (each `judge.judge()` call already gets its own `span("analysis", ...)` from the provider). Same reasoning as `HybridRetriever` not being separately wrapped.
 - Failure-type categorization (Phase 4, Task 2) is implemented separately — see the "Failure-Type Categorization" section below. The narrative evidence-chain builder (Phase 4, Task 3) is implemented separately too — see the "Evidence Chain Narrative" section above.
+- Superseded claims: the "Trace/Span Data Models" entry (2026-07-04, below) lists `Span`'s fields without `error: str | None` (set when an instrumented call raised) or `is_gate: bool` (default `False`; the gate-skip flag this entry's walker checks, added specifically to support the logic above). Both fields exist on the current `Span` model in `src/tracing/models.py`.
 
 ---
 
@@ -196,7 +246,7 @@ The Phase 3 span instrumentation entry below left `Span.confidence_score` unset 
 
 **`mean_similarity_confidence(hits)`** (`src/retrieval/models.py`) is the shared `confidence_fn` for `DenseRetriever.retrieve`, `SparseRetriever.retrieve`, and all three rerankers' `rerank()` — mean `similarity` across the returned hits, `None` if empty. Takes `list[VectorStoreHit]` specifically (not the broader `Sequence[VectorStoreHit]`), for the same T-solving reason above.
 
-**`reciprocal_rank_fusion` is the one exception** — converted from `@traced("retrieval")` to a manual `with span("retrieval", ...)` block, because `confidence_fn` only ever sees a call's *return* value, and RRF's returned `similarity` is the fused RRF score (~1/60 scale), not a `[0,1]` signal. Feeding it through `confidence_from_score` would report confidence `1` on every call regardless of actual retrieval quality — the opposite of useful for backward failure analysis. Instead it calls `mean_similarity_confidence` itself, inside the function, on the *pre-fusion* hits (captured before `similarity` is overwritten with the RRF score).
+**`reciprocal_rank_fusion` is the one exception** — uses a manual `with span("retrieval", ...)` block instead of `@traced("retrieval")`, and calls `mean_similarity_confidence` itself, inside the function, on `result`. **Updated 2026-07-09** (see `docs/DECISIONS.md`): this section originally justified the manual `span()` block by saying RRF's returned `similarity` was the fused RRF score (`~1/60` scale) rather than a `[0,1]` signal, requiring a separate lookup of "pre-fusion hits" before `similarity` got overwritten. That RRF-score-as-`similarity` behavior was reversed (see the Fusion Layer entry above) — `reciprocal_rank_fusion` now returns each hit's real pre-fusion `similarity` already, so no separate pre-fusion lookup is needed. The manual `span()` block itself is unchanged for a narrower reason: `reciprocal_rank_fusion` needs to compute its own confidence score from hit similarity *inside* the function on `result`, which a `confidence_fn` hook (which only ever sees a call's already-returned value) can express just as well now — the manual block is retained as-is rather than migrated back to `@traced(confidence_fn=...)`, since both are equivalent here and there's no correctness reason to churn it.
 
 **`verify_citations`** derives confidence from the fraction of citations verified `supported=True`. **`score_confidence`** derives it from `ConfidenceScore.composite`. **`build_fallback_response`** gets no confidence score — its result is a threshold gate, not a graded signal of its own.
 
@@ -430,7 +480,7 @@ print(result.retrieval_confidence, result.citation_coverage, result.answer_compl
 
 The grounded prompt (below) asks the generation LLM to cite every claim with `[N]` markers, but nothing verified those citations were honest until now. `verify_citations` closes that gap: it re-reads the model's own answer text, pairs each citation with the chunk(s) it claims to cite, and asks a second LLM call whether the cited text actually supports the claim.
 
-**`parse_citations`** (`src/generation/citation_parser.py`): a v1 regex heuristic, not sentence-boundary NLP. It finds each contiguous run of `[N]` markers (`r"(?:\[\d+\])+"`) and pairs it with the text since the previous run (or start of string) as the claim. Good enough to bound "what text does this citation apply to" without a full parser.
+**`parse_citations`** (`src/generation/citation_parser.py`): a v1 regex heuristic, not sentence-boundary NLP. It finds each contiguous run of `[N]` markers (`r"(?:\[\d+\])+"`) and pairs it with the text since the previous run (or start of string) as the claim. Good enough to bound "what text does this citation apply to" without a full parser. **Updated 2026-07-09** (see `docs/DECISIONS.md`): `GROUNDED_SYSTEM_PROMPT` instructs the model to place markers *after* the claim they support, but not every model complies — Haiku in particular will open a sentence with the marker instead (e.g. "According to the context, [1] the rotation is weekly"). When the text preceding a run is empty or ends with a comma — the structural signature of a lead-in with no claim yet — `parse_citations` now treats it as a **leading marker** and scans forward instead, to the nearer of the next sentence-terminal punctuation (`.`/`!`/`?`) or the next citation run, merging that forward text with whatever (possibly empty) text preceded the marker. This is a punctuation-structure signal, not a lead-in-phrase blocklist. Known accepted edge case: if a leading marker's forward scan is capped by another citation run with no terminator in between, that next run's own preceding text is left empty and it too gets treated as leading.
 
 **`CitationJudgeProtocol`** (`src/generation/citation_verifier.py`): `judge(claim, evidence) -> JudgeVerdict`, `provider_id: str`. `JudgeVerdict` is a pydantic `BaseModel` (`supported: bool`, `reasoning: str`) rather than the codebase's usual frozen dataclass — deliberately, so it can be passed straight through as the structured-output schema type to both providers' SDKs (`output_format=JudgeVerdict` for Anthropic, `response_format=JudgeVerdict` for OpenAI). `make_citation_judge(settings)` reads `settings.citation_judge_provider` and returns the matching implementation, same lazy-import factory pattern as `make_embedder`/`make_reranker`.
 
@@ -613,7 +663,7 @@ vector_store = make_vector_store(settings, embedder)  # provider chosen by setti
 - Default weights: `dense_weight=0.7`, `sparse_weight=0.3` (configurable via `Settings`)
 - When a chunk appears in both lists, scores accumulate — overlap boosts rank
 - Dense hit metadata takes priority when a chunk appears in both lists (`hits_by_id[id] = hit` for dense, `setdefault` for sparse)
-- Output: `list[VectorStoreHit]` with `similarity` set to RRF score (not original cosine/BM25 score)
+- Output: `list[VectorStoreHit]` — **reversed 2026-07-09** (see `docs/DECISIONS.md`): each selected hit's original pre-fusion `similarity` (dense cosine, or sparse max-normalized BM25) is now returned unmodified; the RRF score (`~1/60` scale) still drives internal selection/ordering but is never written onto `similarity`. The original 2026-06-30 design overwrote `similarity` with the RRF score via `dataclasses.replace` — that turned out to be exactly the kind of rank-based magnitude RRF's own design says shouldn't be compared as a quality signal, and downstream code (`score_confidence`, `build_fallback_response`) was silently misreading it as a `[0,1]`-scaled value when reranking was disabled.
 - `top_n` limits final output (default: `settings.rerank_top_n = 5`)
 
 **`HybridRetriever`** (`hybrid_retriever.py`):
@@ -642,7 +692,7 @@ hits = retriever.retrieve("how do I configure chunking?")  # list[VectorStoreHit
 **Design notes:**
 - `reciprocal_rank_fusion` is a pure function with no dependencies on retriever internals — independently testable (11 unit tests, no mocks)
 - `HybridRetriever` contains no scoring logic; tests mock both retrievers and verify wiring only (8 tests)
-- RRF scores replace `similarity` via `dataclasses.replace` — frozen `VectorStoreHit` instances are never mutated
+- **Superseded 2026-07-09** (see `docs/DECISIONS.md`): RRF scores no longer replace `similarity`. `reciprocal_rank_fusion` now returns each selected hit's original, unmutated pre-fusion object — frozen `VectorStoreHit` instances still are never mutated, but there's no `dataclasses.replace()` call for `similarity` at all anymore, since the RRF score is used only internally for selection/ordering.
 
 ---
 
@@ -835,24 +885,33 @@ src/
                       # providers/        # step_quality_judge_anthropic.py, step_quality_judge_openai.py,
                       #                   # failure_category_judge_anthropic.py, failure_category_judge_openai.py,
                       #                   # evidence_chain_judge_anthropic.py, evidence_chain_judge_openai.py
-  evaluation/         # Golden dataset runner, metric calculators, regression tracker [planned]
-  api/                # FastAPI app, route handlers [planned]
-  frontend/           # Streamlit or React query dashboard and trace explorer [planned]
+  evaluation/         # Golden dataset runner, metric calculators, regression tracker [planned, Phase 6]
+  api/                # FastAPI app, route handlers [planned, Phase 7]
+  frontend/           # Streamlit trace view + diff view (complete; see "Phase 5: Trace View &
+                      # Diff View" entry, below) — app.py, view_models.py, graph_render.py,
+                      # detail_panel.py, diagnosis_service.py, diff_panel.py, corrections.py
 scripts/
-  seed_corpus.py      # Index sample docs for local testing
-  run_eval.py         # Execute full eval suite and print metrics
+  seed_corpus.py      # Index sample docs for local testing [stub, Phase 1 follow-up]
+  run_eval.py         # Execute full eval suite and print metrics [stub, Phase 6]
 tests/
   fixtures/           # Sample files (sample.md, sample.txt, sample.html) + PDF generator
   unit/ingestion/     # Unit tests for models, loader, storage
   unit/retrieval/     # Unit tests for Embedder, VectorStore, BM25Store, Indexer
+  unit/frontend/      # Unit tests for view_models, diagnosis_service, corrections (graph_render.py/
+                      # detail_panel.py/diff_panel.py/app.py are Streamlit UI, verified manually)
   integration/        # End-to-end pipeline tests
 data/
   raw/                # Source documents (original, untouched)
   processed/          # Normalised plaintext + metadata (one JSON per section/page)
   chroma/             # ChromaDB file-based persistence
   bm25_index.pkl      # BM25 index (pickled corpus + chunk_ids, rebuilt on load)
-  traces/             # JSON trace files (one per request) [planned]
-  eval/               # Golden Q&A dataset and flagged failure cases [planned]
+  traces/             # JSON trace files (one per request) (complete — superseded the [planned]
+                      # marker this line originally had; see the "Superseded claims" note at the
+                      # top of this doc's Trace Persistence entry)
+  eval/               # Golden Q&A dataset and flagged failure cases [planned, Phase 6] — EXCEPT
+                      # eval/corrections/, which is real and actively written by
+                      # src/frontend/corrections.py (one JSON file per trace_id, human-entered
+                      # per-span "expected output" corrections for the diff view)
 ```
 
 ### Ingestion Module
@@ -918,7 +977,21 @@ User Question → Embed → Dense Retrieval ─┐
                                                                     Final Answer
 ```
 
-Every request is wrapped in a **Trace** (`trace_id`) containing **Spans** — one per pipeline step. Spans capture input, output, LLM prompt, token count, latency, and confidence score (1–5).
+Every request is wrapped in a **Trace** (`trace_id`) containing **Spans** — one per pipeline step. Spans capture input, output, LLM prompt, token count, latency, and confidence score (1–5). (No orchestrator yet assembles a `Trace` automatically for a live request — see the Trace Persistence entry above.)
+
+**Backward failure diagnosis and the trace view**, layered on top of a persisted `Trace` (not shown in the forward-flow diagram above, since neither runs during the request itself):
+
+```
+Persisted Trace (JSON + SQLite index)
+        ↓
+[Trace view: color-coded flow graph, click-through span detail — streamlit run src/frontend/app.py]
+        ↓ ("Diagnose root cause" button, on demand — real LLM spend)
+find_root_cause_span → categorize_failure → build_evidence_chain
+        ↓
+[Diff view: received / produced / should-have-produced, per span, with a human-correction input]
+```
+
+See the "Phase 5: Trace View & Diff View" entry above for the frontend implementation, and the Phase 4 entries above for the three analysis functions.
 
 ### Configuration
 

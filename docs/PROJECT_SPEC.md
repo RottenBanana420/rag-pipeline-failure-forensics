@@ -28,43 +28,43 @@
 
 **Ingestion and Chunking (Days 1–3)**
 
-1. **Build a multi-format document loader:** Accept markdown, text, HTML, and PDF files. Normalize everything into clean plaintext with metadata (source file, section heading, page number). Store raw documents alongside processed versions so you can re-index without re-uploading.
+1. **Build a multi-format document loader (COMPLETE):** Accept markdown, text, HTML, and PDF files. Normalize everything into clean plaintext with metadata (source file, section heading, page number). Store raw documents alongside processed versions so you can re-index without re-uploading.
 
-2. **Implement configurable chunking:** Build three chunking strategies and make them switchable: fixed-size with overlap (baseline), recursive character splitting by section headers (structure-aware), and semantic chunking that splits on topic boundaries using embedding similarity. Track which strategy each chunk used.
+2. **Implement configurable chunking (COMPLETE):** Build three chunking strategies and make them switchable: fixed-size with overlap (baseline), recursive character splitting by section headers (structure-aware), and semantic chunking that splits on topic boundaries using embedding similarity. Track which strategy each chunk used.
 
-3. **Generate and store embeddings:** Embed every chunk using text-embedding-3-small. Store in ChromaDB with metadata: source document, chunk index, section heading, chunking strategy, and character count. Build the BM25 index in parallel over the same chunks. Both indexes must stay in sync.
+3. **Generate and store embeddings (COMPLETE):** Embed every chunk using text-embedding-3-small. Store in ChromaDB with metadata: source document, chunk index, section heading, chunking strategy, and character count. Build the BM25 index in parallel over the same chunks. Both indexes must stay in sync.
 
-4. **Add deduplication:** Before inserting a chunk, check for near-duplicates (cosine similarity > 0.95 against existing chunks). Flag and skip duplicates. This prevents the retriever from wasting context window slots on redundant content when the same information appears in multiple docs.
+4. **Add deduplication (COMPLETE):** Before inserting a chunk, check for near-duplicates (cosine similarity > 0.95 against existing chunks). Flag and skip duplicates. This prevents the retriever from wasting context window slots on redundant content when the same information appears in multiple docs.
 
 **Hybrid Retrieval Engine (Days 3–6)**
 
-1. **Implement dense retrieval:** Query the vector store with the embedded user question. Return the top-k chunks ranked by cosine similarity. Start with k=10.
+1. **Implement dense retrieval (COMPLETE):** Query the vector store with the embedded user question. Return the top-k chunks ranked by cosine similarity. Start with k=10.
 
-2. **Implement sparse retrieval:** Run the same query through BM25 over the chunk corpus. Return top-k by BM25 score. This catches exact keyword matches that semantic search might miss — critical for technical documentation with specific function names, config keys, or error codes.
+2. **Implement sparse retrieval (COMPLETE):** Run the same query through BM25 over the chunk corpus. Return top-k by BM25 score. This catches exact keyword matches that semantic search might miss — critical for technical documentation with specific function names, config keys, or error codes.
 
-3. **Build the fusion layer:** Implement Reciprocal Rank Fusion (RRF) to combine dense and sparse results into a single ranked list. RRF assigns scores based on rank position across both lists and merges them. Make the weighting configurable (e.g., 0.7 dense / 0.3 sparse) so you can tune it per use case.
+3. **Build the fusion layer (COMPLETE):** Implement Reciprocal Rank Fusion (RRF) to combine dense and sparse results into a single ranked list. RRF assigns scores based on rank position across both lists and merges them. Make the weighting configurable (e.g., 0.7 dense / 0.3 sparse) so you can tune it per use case.
 
-4. **Add a reranker:** After fusion, send the top 20 candidates through a cross-encoder reranker (use a small model or LLM-as-judge) that scores each chunk's relevance to the actual question. Keep the top 5. This second pass dramatically improves precision and is a strong interview talking point.
+4. **Add a reranker (COMPLETE):** After fusion, send the top 20 candidates through a cross-encoder reranker (use a small model or LLM-as-judge) that scores each chunk's relevance to the actual question. Keep the top 5. This second pass dramatically improves precision and is a strong interview talking point.
 
 #### Phase 2: Build Generation with Citations & Grounded Answers (Day 6–9)
 
-1. **Design the grounded generation prompt:** Construct a system prompt that instructs the LLM to answer only from the provided context, cite specific chunks using bracketed references ([1], [2]), and explicitly state when the context doesn't contain enough information to answer. Include the retrieved chunks as numbered context blocks.
+1. **Design the grounded generation prompt (COMPLETE):** Construct a system prompt that instructs the LLM to answer only from the provided context, cite specific chunks using bracketed references ([1], [2]), and explicitly state when the context doesn't contain enough information to answer. Include the retrieved chunks as numbered context blocks.
 
-2. **Implement citation verification:** After generation, parse the model's citations and verify each one. Does [1] actually support the claim it's attached to? Send each citation-claim pair to an LLM-as-judge for verification. Flag unsupported citations. This is the quality layer most RAG systems skip entirely.
+2. **Implement citation verification (COMPLETE):** After generation, parse the model's citations and verify each one. Does [1] actually support the claim it's attached to? Send each citation-claim pair to an LLM-as-judge for verification. Flag unsupported citations. This is the quality layer most RAG systems skip entirely.
 
-3. **Build the answer confidence scorer:** Score each answer on: retrieval confidence (how relevant were the top chunks?), citation coverage (what percentage of claims have verified citations?), and answer completeness (did the response address all parts of the question?). Return a composite confidence score alongside the answer.
+3. **Build the answer confidence scorer (COMPLETE):** Score each answer on: retrieval confidence (how relevant were the top chunks?), citation coverage (what percentage of claims have verified citations?), and answer completeness (did the response address all parts of the question?). Return a composite confidence score alongside the answer.
 
-4. **Handle the "I don't know" case gracefully:** If retrieval confidence is below a threshold, don't hallucinate. Return a structured response that says what the system found, what it couldn't find, and which documents might be worth checking manually. This is more useful than a fabricated answer and signals production maturity.
+4. **Handle the "I don't know" case gracefully (COMPLETE):** If retrieval confidence is below a threshold, don't hallucinate. Return a structured response that says what the system found, what it couldn't find, and which documents might be worth checking manually. This is more useful than a fabricated answer and signals production maturity.
 
 #### Phase 3: Build the Tracing & Instrumentation Layer (Day 9–12)
 
-1. **Create a Trace object:** Every RAG request gets a unique `trace_id`. The Trace contains: a list of Span objects (one per pipeline step: ingestion, retrieval, ranking, generation, verification), the final output, and a status (success/failure/degraded). This becomes your complete record of what happened.
+1. **Create a Trace object (COMPLETE):** Every RAG request gets a unique `trace_id`. The Trace contains: a list of Span objects (one per pipeline step: ingestion, retrieval, ranking, generation, verification), the final output, and a status (success/failure/degraded). This becomes your complete record of what happened.
 
-2. **Instrument each retrieval and generation step with spans:** Wrap each pipeline component in a context manager that automatically captures: step name, input (serialized), output (serialized), LLM prompt sent (if applicable), LLM raw response, token count, latency, and any errors. Use a decorator pattern so instrumenting a new step is one line of code.
+2. **Instrument each retrieval and generation step with spans (COMPLETE):** Wrap each pipeline component in a context manager that automatically captures: step name, input (serialized), output (serialized), LLM prompt sent (if applicable), LLM raw response, token count, latency, and any errors. Use a decorator pattern so instrumenting a new step is one line of code.
 
-3. **Add confidence scoring at each step:** After each component (retrieval, ranking, generation), output a confidence score (1–5) for its own result. Store this in the span. When you're tracing backward from a failure, low-confidence spans are your primary suspects.
+3. **Add confidence scoring at each step (COMPLETE):** After each component (retrieval, ranking, generation), output a confidence score (1–5) for its own result. Store this in the span. When you're tracing backward from a failure, low-confidence spans are your primary suspects.
 
-4. **Store traces as structured JSON:** Write each complete trace to a JSON file and index it in SQLite (trace_id, timestamp, status, final_score). This gives you both human-readable traces and queryable metadata. Ensure spans include enough context to reconstruct what happened without re-running.
+4. **Store traces as structured JSON (COMPLETE):** Write each complete trace to a JSON file and index it in SQLite (trace_id, timestamp, status, final_score). This gives you both human-readable traces and queryable metadata. Ensure spans include enough context to reconstruct what happened without re-running. Note: these four pieces (Trace/Span models, instrumentation, confidence scoring, persistence) are each independently complete and tested, but no orchestrator yet calls `collect_spans()` + `persist_trace()` together automatically for a live end-to-end request — see CLAUDE.md's Module Layout (`src/tracing/`) for this residual gap.
 
 #### Phase 4: Build Backward Trace Analysis for Failure Diagnosis (Day 12–15)
 
@@ -76,9 +76,9 @@
 
 #### Phase 5: Build Visual Explorers & Interactive Interfaces (Day 15–18)
 
-1. **Create the trace view:** A visual representation of the pipeline where each step is a node. Color-code by status: green (healthy), yellow (low confidence), red (identified root cause). Clicking a node shows the full span details — input, output, embeddings, LLM prompt (if any), confidence score.
+1. **Create the trace view (COMPLETE):** A visual representation of the pipeline where each step is a node. Color-code by status: green (healthy), yellow (low confidence), red (identified root cause). Clicking a node shows the full span details — input, output, LLM prompt (if any), confidence score. (Embeddings are not shown — `Span` has no embeddings field; `detail_panel.py` surfaces this explicitly rather than extending the trace schema. See CLAUDE.md's "Trace view (frontend)" decision.) Implemented in `src/frontend/` (`app.py`, `view_models.py`, `graph_render.py`, `detail_panel.py`, `diagnosis_service.py`); run via `streamlit run src/frontend/app.py`.
 
-2. **Add the diff view:** For failed traces, show a side-by-side comparison: what the step received vs. what it produced vs. what it should have produced (based on the golden dataset or human correction). Highlight the specific divergence. This makes diagnosis instant.
+2. **Add the diff view (COMPLETE):** For failed traces, show a side-by-side comparison: what the step received vs. what it produced vs. what it should have produced (based on a human correction — no golden dataset exists yet, see Phase 6 item 1). Highlight the specific divergence. Implemented in `src/frontend/diff_panel.py` (word-level diff highlighting) and `src/frontend/corrections.py` (per-span human-correction persistence). See CLAUDE.md's "Diff view (frontend)" decision and `docs/DECISIONS.md` (2026-07-11 entries) for the human-correction-store-not-golden-dataset scoping choice and a follow-up review that fixed a Markdown-parsing bug, whitespace-collapse bug, and a save-gated-diff UX gap.
 
 3. **Build the flagging interface:** A simple button that lets a user mark any trace as "bad output." When clicked, the system runs the backward trace analysis and displays the root cause diagnosis. The user can confirm or override the diagnosis. This creates the feedback signal for your eval loop.
 
