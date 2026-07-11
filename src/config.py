@@ -127,6 +127,9 @@ class Settings(BaseSettings):
     trace_output_dir: Path = Field(default=Path("./data/traces"))
     sqlite_db_path: Path = Field(default=Path("./data/traces.db"))
 
+    # Diff view (per-span human-entered "expected output" corrections)
+    human_corrections_dir: Path = Field(default=Path("./data/eval/corrections"))
+
     # Deduplication
     dedup_threshold: float = Field(default=0.95, ge=0.0, le=1.0)
 
