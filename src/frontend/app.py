@@ -14,7 +14,7 @@ from __future__ import annotations
 import streamlit as st
 
 from src.config import settings
-from src.frontend import detail_panel
+from src.frontend import detail_panel, diff_panel
 from src.frontend.diagnosis_service import DiagnosisResult, run_diagnosis
 from src.frontend.graph_render import render_graph
 from src.frontend.view_models import (
@@ -122,5 +122,8 @@ with col_detail:
             node.status for node in view_model.nodes if node.span_id == selected_span_id
         )
         detail_panel.render(selected_span, status, order)
+        if trace.status != "success":
+            st.divider()
+            diff_panel.render(selected_span, trace_id, settings)
     else:
         st.caption("Click a node in the graph to see its details.")
