@@ -157,7 +157,10 @@ src/
                       # view_models.py — pure, Streamlit/LLM-independent: node_status (color-coding:
                       # root-cause span_id match -> red; confidence_score <= threshold -> yellow;
                       # else green) + build_graph_view_model (Trace -> TraceGraphViewModel, one node
-                      # per span in trace.spans order, not one per distinct step name)
+                      # per span in trace.spans order, not one per distinct step name) +
+                      # build_span_diff_view_model (Span + optional human-corrected expected output ->
+                      # SpanDiffViewModel, a word-level difflib diff tagging each side's segments
+                      # equal/expected_only/produced_only; segments are None when no correction exists)
                       # diagnosis_service.py — run_diagnosis, the on-demand (not automatic) root-cause
                       # pipeline: find_root_cause_span -> categorize_failure -> build_evidence_chain,
                       # short-circuiting the latter two when no root cause is found; the only
@@ -168,6 +171,18 @@ src/
                       # detail_panel.py — node-detail panel: input/output/llm_prompt/confidence_score/
                       # latency_ms/token_count/error, plus an "embeddings not captured" note for
                       # retrieval/ranking-step spans (Span has no embeddings field)
+                      # corrections.py — save_correction/load_correction, persists a human-entered
+                      # per-span "expected output" as JSON, one file per trace_id keyed by span_id
+                      # (data/eval/corrections/{trace_id}.json); not the Phase 6 golden dataset
+                      # diff_panel.py — diff view: received/produced/"should have produced" side by
+                      # side for a selected span in a non-success trace, computed live from the
+                      # expected-output textbox's current value (not gated behind a save), with
+                      # word-level divergence highlighting (build_span_diff_view_model's segments
+                      # rendered as HTML spans via st.html — not st.markdown(unsafe_allow_html=True),
+                      # which would run diff text through Markdown parsing first — wrapped in a
+                      # white-space:pre-wrap container so whitespace-only divergence stays visible;
+                      # each segment's text passed through html.escape() first since span/correction
+                      # text is untrusted)
                       # app.py — Streamlit entrypoint wiring the above together
 scripts/
   seed_corpus.py      # Index sample docs for local testing
@@ -188,10 +203,12 @@ tests/
   unit/analysis/      # test_root_cause, test_failure_categorizer, test_evidence_chain
                       # providers/         # per-judge-provider tests (step_quality/failure_category/
                       # evidence_chain_judge × anthropic/openai)
-  unit/frontend/      # test_view_models (color-coding + view-model construction),
-                      # test_diagnosis_service (fake judges, no real API calls) — graph_render.py/
-                      # detail_panel.py/app.py are Streamlit UI and verified manually instead
-                      # (`streamlit run src/frontend/app.py`), not by automated tests
+  unit/frontend/      # test_view_models (color-coding + view-model construction, including
+                      # build_span_diff_view_model's diff-segment tagging), test_diagnosis_service
+                      # (fake judges, no real API calls), test_corrections (save/load round-trip via
+                      # tmp_path) — graph_render.py/detail_panel.py/diff_panel.py/app.py are
+                      # Streamlit UI and verified manually instead (`streamlit run src/frontend/app.py`),
+                      # not by automated tests
   integration/        # End-to-end pipeline tests against real ChromaDB
 data/
   raw/                # Uploaded source documents
@@ -236,6 +253,8 @@ data/
 
 **Trace view (frontend):** `src/frontend/app.py` (`streamlit run src/frontend/app.py`) is a Streamlit app rendering a `Trace`'s spans as a left-to-right flow diagram, color-coded green/yellow/red, with a click-through node-detail panel. Streamlit was chosen over React specifically because no API/HTTP layer exists yet (`src/api/` is still a Phase 7 placeholder) — the app calls `load_trace`/`list_trace_records`/`find_root_cause_span`/`categorize_failure`/`build_evidence_chain` directly as Python functions, versus React which would require standing up `src/api/main.py` from scratch first, turning "build a trace view" into "build Phase 5 and Phase 7 at once." `Trace.spans` is a flat, execution-order list with no parent/child field, and multiple spans can share the same `step` (e.g. `HybridRetriever`'s dense/sparse retrieval legs are both `step="retrieval"`), so `build_graph_view_model` (`src/frontend/view_models.py`) makes **each span its own node**, positioned in `trace.spans` order and connected by sequential edges — not one node per distinct step name. `node_status` colors a node red if it matches the current `RootCauseDiagnosis.root_cause_span.span_id` (always wins, regardless of `confidence_score`), else yellow if `Span.confidence_score <= settings.root_cause_quality_threshold` (reusing that setting's existing 1-5 "at or below is unreasonable" semantics rather than inventing a parallel threshold), else green — this needs no LLM call, so opening any trace is free. Root-cause coloring only appears after an explicit "Diagnose root cause" button click, which calls `run_diagnosis` (`src/frontend/diagnosis_service.py`, the only `src/frontend/` module importing from `src/analysis/`) — real per-span LLM judge spend, per the "LLM Judge Cost Management" section below, so it must be deliberate, not automatic on trace load. The resulting `DiagnosisResult` is cached in `st.session_state` keyed by `trace_id`, so revisiting the same trace within a session doesn't re-spend. The node graph is rendered via `streamlit_flow` (`streamlit-flow-component`, a new `frontend` extra in `pyproject.toml`), chosen via Context7 lookup over `streamlit-agraph` (undocumented there — a maintenance-signal red flag); its `get_node_on_click`/`StreamlitFlowState.selected_id` click detection, per-node `style` dict, and `ManualLayout` positioning map directly onto this flat/ordered span-list model. `Span` has no embeddings/vector field, so `detail_panel.py` shows an explicit "embeddings not captured in this trace" note for retrieval/ranking-step spans rather than extending `Span` — that would mean touching tracing instrumentation across every retrieval/ranking provider and storing potentially large vectors in every trace JSON, out of scope for a UI-only task. See `docs/DECISIONS.md` for the streamlit_flow `key=`/`st.session_state` collision gotcha hit during implementation.
 
+**Diff view (frontend):** `docs/PROJECT_SPEC.md` (Phase 5, item 2) asks for a per-span "received vs. produced vs. should have produced" comparison on failed traces, with the divergence highlighted. No golden-dataset or human-correction data source exists yet — `src/evaluation/` is still a Phase 6 placeholder and no `Span`/`Trace` field carries an expected output — so `src/frontend/corrections.py` introduces the "human correction" half of that spec sentence only: `save_correction`/`load_correction` persist a human-typed expected output per `(trace_id, span_id)` as one JSON file per trace under `settings.human_corrections_dir` (default `./data/eval/corrections`), mirroring `src.tracing.storage`'s one-file-per-id convention. This is deliberately not the full Phase 6 golden dataset (50+ hand-written Q&A pairs plus automated eval metrics) — that remains out of scope here; a future Phase 6 orchestrator can read the same correction files. `build_span_diff_view_model` (`src/frontend/view_models.py`) computes the divergence with a word-level diff (`difflib.SequenceMatcher` over whitespace-preserving tokens, the same technique `difflib.HtmlDiff`/`git diff --word-diff` use — no new dependency), returning `None` segments when no correction has been entered yet rather than diffing against an empty string. `diff_panel.py` builds this from the expected-output text area's *live* return value, not the on-disk saved correction, so the highlighted divergence updates immediately as the user types/blurs rather than requiring a save first; "Save correction" (`st.toast("Correction saved.", icon="✅")` on click, no `st.rerun()`) is purely for persistence. It renders the three columns and, only for `trace.status != "success"` traces (matching the spec's "for failed traces" and the existing "Diagnose root cause" button's own success-gate), the highlighted segments as inline-styled HTML via `st.html()` (not `st.markdown(unsafe_allow_html=True)` — that would run the diff text through Markdown parsing first, corrupting literal `*`/`_` characters), wrapped in a `white-space:pre-wrap` container so whitespace-only divergence doesn't visually collapse. Every segment's text is passed through `html.escape()` first, since `Span.output` and human corrections are both untrusted text and neither `st.markdown(unsafe_allow_html=True)` nor `st.html` escapes automatically (confirmed via Context7 lookup against Streamlit's docs); `detail_panel.py` avoids this risk entirely by using `st.text_area`, which auto-escapes, but the diff view needs per-word span-level styling that a plain text widget can't produce. `st.html` predates the project's prior `streamlit>=1.38` floor, so `pyproject.toml`'s `frontend` extra now requires `streamlit>=1.41`.
+
 **Feedback loop:** Human-flagged bad outputs trigger automatic root-cause analysis. Confirmed diagnoses auto-generate new eval test cases (question, correct answer, failure category, failing step), growing the regression dataset over time.
 
 ### Confidence Scoring
@@ -265,6 +284,8 @@ RAW_DATA_DIR=          # Path for uploaded source documents (default: ./data/raw
 PROCESSED_DATA_DIR=    # Path for normalized plaintext + metadata (default: ./data/processed)
 SQLITE_DB_PATH=        # Path for the SQLite trace metadata index (default: ./data/traces.db)
 TRACE_OUTPUT_DIR=      # Directory for per-trace JSON files (default: ./data/traces/)
+HUMAN_CORRECTIONS_DIR= # Directory for per-span human-entered "expected output" corrections used by
+                        # the trace view's diff view (default: ./data/eval/corrections)
 LOG_LEVEL=             # DEBUG | INFO | WARNING | ERROR | CRITICAL (default: INFO)
 
 # Retrieval
