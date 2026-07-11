@@ -12,6 +12,7 @@ from src.analysis.root_cause import RootCauseDiagnosis, SpanQualityResult
 from src.frontend.view_models import (
     NODE_STATUS_COLOR,
     build_graph_view_model,
+    build_span_diff_view_model,
     node_status,
     root_cause_span_id_from_diagnosis,
 )
@@ -223,3 +224,79 @@ class TestRootCauseSpanIdFromDiagnosis:
         diagnosis = make_diagnosis(span)
 
         assert root_cause_span_id_from_diagnosis(diagnosis) == span.span_id
+
+
+class TestBuildSpanDiffViewModel:
+    def test_no_expected_output_yields_no_segments(self):
+        span = make_span(output="the sky is blue")
+
+        vm = build_span_diff_view_model(span, None)
+
+        assert vm.expected is None
+        assert vm.expected_segments is None
+        assert vm.produced_segments is None
+        assert vm.received == span.input
+        assert vm.produced == span.output
+
+    def test_identical_expected_and_produced_are_all_equal(self):
+        span = make_span(output="the sky is blue")
+
+        vm = build_span_diff_view_model(span, "the sky is blue")
+
+        assert vm.expected_segments is not None
+        assert vm.produced_segments is not None
+        assert all(s.tag == "equal" for s in vm.expected_segments)
+        assert all(s.tag == "equal" for s in vm.produced_segments)
+
+    def test_changed_word_tags_each_side(self):
+        span = make_span(output="the sky is green")
+
+        vm = build_span_diff_view_model(span, "the sky is blue")
+
+        assert vm.expected_segments is not None
+        assert vm.produced_segments is not None
+        expected_tagged = {s.tag for s in vm.expected_segments}
+        produced_tagged = {s.tag for s in vm.produced_segments}
+        assert "expected_only" in expected_tagged
+        assert "produced_only" in produced_tagged
+        assert any(
+            s.tag == "expected_only" and "blue" in s.text for s in vm.expected_segments
+        )
+        assert any(
+            s.tag == "produced_only" and "green" in s.text for s in vm.produced_segments
+        )
+
+    def test_added_word_only_marked_on_produced_side(self):
+        span = make_span(output="the sky is very blue")
+
+        vm = build_span_diff_view_model(span, "the sky is blue")
+
+        assert vm.expected_segments is not None
+        assert vm.produced_segments is not None
+        assert all(s.tag == "equal" for s in vm.expected_segments)
+        assert any(
+            s.tag == "produced_only" and "very" in s.text for s in vm.produced_segments
+        )
+
+    def test_removed_word_only_marked_on_expected_side(self):
+        span = make_span(output="the sky is blue")
+
+        vm = build_span_diff_view_model(span, "the sky is very blue")
+
+        assert vm.produced_segments is not None
+        assert vm.expected_segments is not None
+        assert all(s.tag == "equal" for s in vm.produced_segments)
+        assert any(
+            s.tag == "expected_only" and "very" in s.text for s in vm.expected_segments
+        )
+
+    def test_segments_join_back_to_original_text(self):
+        span = make_span(output="the sky is green today")
+        expected = "the sky is blue today"
+
+        vm = build_span_diff_view_model(span, expected)
+
+        assert vm.expected_segments is not None
+        assert vm.produced_segments is not None
+        assert "".join(s.text for s in vm.expected_segments) == expected
+        assert "".join(s.text for s in vm.produced_segments) == span.output

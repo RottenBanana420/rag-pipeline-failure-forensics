@@ -13,7 +13,9 @@ positioned/connected in `trace.spans` order — not grouped by step name.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from typing import TYPE_CHECKING, Literal
 
 from src.tracing.models import PipelineStep, Span, Trace
@@ -103,3 +105,84 @@ def root_cause_span_id_from_diagnosis(
 ) -> str | None:
     """Extract the root-cause span's id from a diagnosis, if any."""
     return diagnosis.root_cause_span.span_id if diagnosis is not None else None
+
+
+_WHITESPACE_RE = re.compile(r"(\s+)")
+
+DiffTag = Literal["equal", "expected_only", "produced_only"]
+
+
+@dataclass(frozen=True)
+class DiffSegment:
+    text: str
+    tag: DiffTag
+
+
+@dataclass(frozen=True)
+class SpanDiffViewModel:
+    span_id: str
+    received: str
+    produced: str
+    expected: str | None
+    expected_segments: tuple[DiffSegment, ...] | None
+    produced_segments: tuple[DiffSegment, ...] | None
+
+
+def _tokenize(text: str) -> list[str]:
+    """Split text into whitespace-preserving tokens for word-level diffing."""
+    return [token for token in _WHITESPACE_RE.split(text) if token != ""]
+
+
+def build_span_diff_view_model(
+    span: Span, expected_output: str | None
+) -> SpanDiffViewModel:
+    """Build a side-by-side received/produced/expected diff for *span*.
+
+    When *expected_output* is None (no human correction entered yet), both
+    segment fields are None — there's nothing to diff against. Otherwise a
+    word-level diff (same technique as `difflib.HtmlDiff`/`git diff
+    --word-diff`) is computed between the expected output and `span.output`:
+    `expected_segments` reflects the expected side (tagging text missing
+    from what was produced), `produced_segments` reflects the produced side
+    (tagging text not present in what was expected).
+    """
+    if expected_output is None:
+        return SpanDiffViewModel(
+            span_id=span.span_id,
+            received=span.input,
+            produced=span.output,
+            expected=None,
+            expected_segments=None,
+            produced_segments=None,
+        )
+
+    expected_tokens = _tokenize(expected_output)
+    produced_tokens = _tokenize(span.output)
+    matcher = SequenceMatcher(None, expected_tokens, produced_tokens)
+    opcodes = matcher.get_opcodes()
+
+    expected_segments = [
+        DiffSegment(
+            text="".join(expected_tokens[i1:i2]),
+            tag="equal" if tag == "equal" else "expected_only",
+        )
+        for tag, i1, i2, _j1, _j2 in opcodes
+        if i1 != i2
+    ]
+    produced_segments = [
+        DiffSegment(
+            text="".join(produced_tokens[j1:j2]),
+            tag="equal" if tag == "equal" else "produced_only",
+        )
+        for tag, _i1, _i2, j1, j2 in opcodes
+        if j1 != j2
+    ]
+
+    return SpanDiffViewModel(
+        span_id=span.span_id,
+        received=span.input,
+        produced=span.output,
+        expected=expected_output,
+        expected_segments=tuple(expected_segments),
+        produced_segments=tuple(produced_segments),
+    )
