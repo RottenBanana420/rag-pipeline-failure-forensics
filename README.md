@@ -36,7 +36,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | 2 | Generation with Citations | Done |
 | 3 | Tracing & Instrumentation | In Progress (trace-per-request orchestrator not yet wired) |
 | 4 | Backward Failure Analysis | Done |
-| 5 | Visual Explorers & Frontend | In Progress (trace view + diff view done; flagging interface + query dashboard not started) |
+| 5 | Visual Explorers & Frontend | In Progress (trace view, diff view, and flagging interface done; query dashboard not started) |
 | 6 | Evaluation Framework | Planned |
 | 7 | FastAPI, Docker, Portfolio Polish | Planned |
 
@@ -94,5 +94,5 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | On-demand root-cause diagnosis from the trace view (`diagnosis_service.py`) | Done |
 | Diff view: received/produced/should-have-produced comparison, word-level divergence highlighting (`diff_panel.py`) | Done |
 | Per-span human-correction persistence (`corrections.py`) | Done |
-| Flagging interface (mark a trace "bad output" from the UI) | Planned |
+| Flagging interface: mark any trace "bad output" (including successful ones), confirm or override the root-cause diagnosis, persist the verdict for the eval loop (`flags.py`) | Done |
 | Query dashboard (ask a question, see citations/confidence/retrieval-mode toggle) | Planned |

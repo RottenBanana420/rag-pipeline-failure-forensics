@@ -1,5 +1,56 @@
 # Architecture Overview
 
+## 2026-07-12 — Phase 5: Flagging Interface (Complete)
+
+### Mark Any Trace "Bad Output", Confirm or Override the Diagnosis
+
+`docs/PROJECT_SPEC.md` (Phase 5, item 3) asks for a button that lets a user mark any trace as "bad output," runs the backward trace analysis, displays the diagnosis, and lets the user confirm or override it — "the feedback signal for your eval loop." This repurposes the trace view's existing "Diagnose root cause" button (from the entry below) into "Flag as bad output" — one control, not two — and adds a new persistence module, `src/frontend/flags.py`.
+
+**Button repurposed, status gate removed (`app.py`):** The old button only rendered for `trace.status != "success"`. The spec's "mark *any* trace" wording removes that gate entirely — a human can catch a bad output the pipeline's own status/confidence checks missed. `run_diagnosis` itself, and its `st.session_state`-keyed caching, are unchanged; only the sidebar block around it and what happens after a diagnosis is shown are new. This is a deliberate divergence from the diff view (previous entry), which stays gated on `trace.status != "success"` — a different spec sentence for a different feature.
+
+**`flags.py` (`DiagnosisSummary`, `HumanReview`, `FlagRecord`, `save_flag`/`load_flag`):** one JSON file per trace (`data/eval/flags/{trace_id}.json`), mirroring `corrections.py`'s one-file-per-id convention but holding a single record rather than a per-span mapping, since a flag is a property of the whole trace. `DiagnosisSummary` flattens a `DiagnosisResult` into plain `str`/`int` fields (no live `Span`/pydantic objects), the same rationale `EvidenceEntry` already established. `HumanReview` (`confirmed`, `span_id`, `category`, `note`) always carries a complete verdict — confirming copies the algorithm's own span/category across verbatim rather than just setting a boolean, so a downstream reader never branches on `confirmed` to find the human's actual answer. Serialized via `dataclasses.asdict` + manual reconstruction; no new dependency (`dacite`/`cattrs`/`dataclasses-json` are not declared).
+
+**Confirm or override (`app.py`):** "Confirm diagnosis" (shown only when a root cause was found) copies the algorithm's span/category/rationale straight into a `FlagRecord`. "Override diagnosis" is an `st.form` — a root-cause-span selectbox (from `trace.spans`), a failure-category selectbox (`get_args(FailureCategory)`, the existing 7-value taxonomy), and a note `text_area`, batched into one submit-triggered rerun — and is the *only* finalize path when the diagnosis run found no root cause. Persistence happens only on one of these two actions, never from running the diagnosis alone, mirroring `corrections.py`'s "button click persists, nothing else does" rule. A trace with an existing `FlagRecord` shows a compact summary (including the human's note, if any) plus a "Redo review" button instead of the full flow every time.
+
+**Graph-coloring fallback:** `root_cause_span_id` for `build_graph_view_model` still comes from the in-session `DiagnosisResult` first; when that's unavailable (a fresh session with no diagnosis run yet) and a persisted `FlagRecord` exists, `app.py` falls back to `flag_record.diagnosis.root_cause_span_id`. So revisiting an already-flagged trace in a brand-new session still shows the root-cause node red, with zero LLM spend — verified manually (Playwright-driven browser session, real Anthropic judge calls on first flag, then a fresh session against the same trace with no new calls).
+
+**Settings additions:**
+- `flagged_traces_dir` (default `Path("./data/eval/flags")`)
+
+**Public API:**
+
+```python
+from src.config import settings
+from src.tracing.storage import load_trace
+from src.frontend.diagnosis_service import run_diagnosis
+from src.frontend.flags import (
+    FlagRecord, HumanReview, diagnosis_summary_from_result, load_flag, save_flag,
+)
+
+trace = load_trace(trace_id, settings.trace_output_dir)
+diagnosis_result = run_diagnosis(trace, settings)  # real LLM spend
+summary = diagnosis_summary_from_result(diagnosis_result)  # None if no root cause found
+
+record = FlagRecord(
+    flagged_at="2026-07-12T00:00:00+00:00",
+    diagnosis=summary,
+    human_review=HumanReview(confirmed=True, span_id=summary.root_cause_span_id,
+                              category=summary.category, note=""),
+)
+save_flag(trace_id, record, settings.flagged_traces_dir)
+
+# Later, possibly in a different session:
+flag_record = load_flag(trace_id, settings.flagged_traces_dir)
+```
+
+**Design notes:**
+- `Trace`/`Span` gained no new field — a flag is a side-store, same pattern `corrections.py` already established for human-entered data, not a schema change.
+- Confirmed via mypy `strict = true` that narrowing `DiagnosisResult.category`/`.evidence_chain` from `.diagnosis is not None` needs an explicit `assert`, not automatic inference (they're independent `Optional` fields on a frozen dataclass) — resolved with two `assert` statements in `diagnosis_summary_from_result` rather than `# type: ignore` comments, verified clean with zero ignores.
+- Superseded claims: the "Document Loader" entry's Module Layout snippet (2026-06-28, below) lists `src/frontend/` without `flags.py` and `data/eval/` as "[planned, Phase 6] — EXCEPT eval/corrections/" without mentioning `eval/flags/`. Both are now real: `src/frontend/flags.py` is implemented, and `data/eval/flags/` is actively written by it, same as `eval/corrections/`.
+- See `docs/DECISIONS.md` (2026-07-12 entry) for the full design rationale, including why the diff view's `trace.status`-gate and the flag button's now-removed one are a deliberate divergence rather than an inconsistency.
+
+---
+
 ## 2026-07-11 — Phase 5: Trace View & Diff View (Complete)
 
 ### Streamlit Trace Explorer + Failure Diff View
@@ -985,13 +1036,15 @@ Every request is wrapped in a **Trace** (`trace_id`) containing **Spans** — on
 Persisted Trace (JSON + SQLite index)
         ↓
 [Trace view: color-coded flow graph, click-through span detail — streamlit run src/frontend/app.py]
-        ↓ ("Diagnose root cause" button, on demand — real LLM spend)
+        ↓ ("Flag as bad output" button, on demand — real LLM spend, on any trace)
 find_root_cause_span → categorize_failure → build_evidence_chain
+        ↓
+[Diagnosis shown; human Confirms or Overrides → FlagRecord persisted — src/frontend/flags.py]
         ↓
 [Diff view: received / produced / should-have-produced, per span, with a human-correction input]
 ```
 
-See the "Phase 5: Trace View & Diff View" entry above for the frontend implementation, and the Phase 4 entries above for the three analysis functions.
+See the "Phase 5: Flagging Interface" and "Phase 5: Trace View & Diff View" entries above for the frontend implementation, and the Phase 4 entries above for the three analysis functions.
 
 ### Configuration
 
