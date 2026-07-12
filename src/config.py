@@ -130,6 +130,9 @@ class Settings(BaseSettings):
     # Diff view (per-span human-entered "expected output" corrections)
     human_corrections_dir: Path = Field(default=Path("./data/eval/corrections"))
 
+    # Flagging interface (per-trace "flag as bad output" + confirm/override review)
+    flagged_traces_dir: Path = Field(default=Path("./data/eval/flags"))
+
     # Deduplication
     dedup_threshold: float = Field(default=0.95, ge=0.0, le=1.0)
 
