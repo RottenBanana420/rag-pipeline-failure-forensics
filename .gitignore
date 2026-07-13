@@ -46,6 +46,10 @@ htmlcov/
 *.swn
 *~
 
+# Claude Code
+.agents/
+.claude/skills/
+
 # macOS
 .DS_Store
 **/.DS_Store
