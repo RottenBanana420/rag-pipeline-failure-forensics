@@ -329,8 +329,12 @@ data/
   bm25_index.pkl      # Pickled BM25 corpus + chunk_ids
   traces/             # JSON trace files (one per request)
   eval/               # corrections/ — per-span human-corrected expected outputs (diff view);
-                      # flags/ — per-trace "bad output" flag records (flagging interface); a
-                      # golden Q&A dataset proper is still Phase 6
+                      # flags/ — per-trace "bad output" flag records (flagging interface)
+  golden/             # corpus/ — 8 fictional "Northwind" internal docs (git-tracked, unlike
+                      # data/raw/ which is gitignored runtime data) since the real document
+                      # corpus is still empty; qa_dataset.json — 51 hand-written Q&A pairs
+                      # (Phase 6 item 1) tied to specific document sections, covering lookup,
+                      # multi_hop, no_answer, ambiguous, and edge_case categories
 ```
 
 ### Key Design Decisions

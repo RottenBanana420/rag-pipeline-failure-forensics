@@ -86,7 +86,7 @@
 
 #### Phase 6: Build Evaluation Framework & Feedback Loop (Day 18–21)
 
-1. **Create a golden Q&A dataset:** Write 50+ question-answer pairs by hand, each tied to specific sections of your document corpus. Include straightforward lookups, multi-hop questions (answer requires combining information from two documents), questions with no answer in the corpus, ambiguous questions, and edge cases. This is your ground truth for measuring progress.
+1. **Create a golden Q&A dataset (COMPLETE):** Write 50+ question-answer pairs by hand, each tied to specific sections of your document corpus. Include straightforward lookups, multi-hop questions (answer requires combining information from two documents), questions with no answer in the corpus, ambiguous questions, and edge cases. This is your ground truth for measuring progress. Implemented as `data/golden/corpus/` (8 fictional "Northwind" internal docs, since the real corpus is still empty) and `data/golden/qa_dataset.json` (51 entries: 20 lookup, 11 multi_hop, 8 no_answer, 6 ambiguous, 6 edge_case). See `docs/ARCHITECTURE.md` (2026-07-15: Golden Q&A Dataset entry) and `docs/DECISIONS.md` for the empty-corpus rationale.
 
 2. **Implement automated eval metrics:** For each test case, measure: answer correctness (LLM-as-judge against golden answer), faithfulness (are all claims grounded in retrieved context?), retrieval relevance (were the right chunks retrieved?), and citation accuracy (do citations actually support claims?). Run the full suite on every pipeline change. Track these metrics over time to spot regressions.
 

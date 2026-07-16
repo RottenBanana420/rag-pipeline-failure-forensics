@@ -1,5 +1,17 @@
 # Architecture Overview
 
+## 2026-07-15 — Phase 6: Golden Q&A Dataset (Complete)
+
+### Ground Truth Before an Eval Runner Exists
+
+`docs/PROJECT_SPEC.md` (Phase 6, item 1) asks for 50+ hand-written question-answer pairs, each tied to specific sections of the document corpus, covering straightforward lookups, multi-hop questions, no-answer questions, ambiguous questions, and edge cases. The real document corpus doesn't exist yet — `data/raw/`/`data/processed/` are empty and `scripts/seed_corpus.py` is an unimplemented stub — so there was nothing real to write grounded questions against. Rather than block on Phase 1's ingestion follow-up, this entry adds a small, git-tracked, fictional-but-realistic internal-documentation corpus purpose-built to support all five required question categories, plus the dataset itself.
+
+**`data/golden/corpus/*.md`:** 8 markdown documents for a fictional company ("Northwind"), each with 3–6 sections: onboarding guide, architecture overview, deployment guide, incident response runbook, on-call rotation policy, security policy, data retention policy, and API reference. The docs deliberately cross-reference each other (e.g. the onboarding guide points to the architecture overview's service-ownership table; the incident runbook's bad-deploy scenario references the deployment guide's rollback procedure) so genuine multi-hop questions exist, and two facts are deliberately stated with conflicting numbers in different documents (the incident runbook's SEV1/SEV2 postmortem deadline vs. the security policy's security-incident postmortem deadline; the incident runbook's SEV1/SEV2 auto-escalation window vs. the on-call policy's general escalation-contact window) to fuel genuine ambiguous/edge-case questions rather than contrived ones.
+
+**`data/golden/qa_dataset.json`:** a plain JSON array of 51 objects (`id`, `question`, `expected_answer`, `category`, `source_documents`, `source_sections`, `notes`) — 20 lookup, 11 multi_hop, 8 no_answer, 6 ambiguous, 6 edge_case. Grounding is at document/section-heading level rather than chunk-ID level, since chunk boundaries are chunking-strategy-dependent (Phase 6 item 3 compares three strategies) and chunk-level references would go stale the moment someone re-chunks. `data/golden/` (rather than `data/eval/`) was chosen because `data/eval/*` is gitignored runtime-artifact space (flags, corrections) while this dataset is hand-authored ground truth that must be committed — see `docs/DECISIONS.md` for the full rationale.
+
+Explicitly out of scope here: `scripts/seed_corpus.py` (actually indexing this corpus into the retrieval pipeline), and `src/evaluation/`'s metric calculators/regression tracker (Phase 6 items 2–6) — this entry is the ground-truth dataset only.
+
 ## 2026-07-15 — Phase 5: Query Dashboard (Complete)
 
 ### The First Generation Orchestrator: Ask a Question, Get a Cited Answer, See the Confidence Behind It
