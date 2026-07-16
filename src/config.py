@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     reranker_model: str = Field(default="cross-encoder/ms-marco-MiniLM-L6-v2")
     reranker_device: Literal["auto", "cpu", "cuda", "mps"] = Field(default="auto")
 
+    # Answer generation (grounded LLM call producing the [N]-cited answer text)
+    generation_llm_provider: Literal["anthropic", "openai"] = Field(default="anthropic")
+    generation_llm_model: str = Field(default="claude-sonnet-4-5")
+    generation_llm_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+
     # Citation verification
     citation_judge_provider: Literal["anthropic", "openai"] = Field(default="anthropic")
     citation_judge_model: str = Field(default="claude-sonnet-4-5")

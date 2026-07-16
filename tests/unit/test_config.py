@@ -289,6 +289,84 @@ class TestChunkingSettingsDefaults:
         assert Settings().semantic_breakpoint_percentile == 95.0
 
 
+class TestAnswerGenerationSettingsDefaults:
+    def test_generation_llm_provider_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().generation_llm_provider == "anthropic"
+
+    def test_generation_llm_model_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().generation_llm_model == "claude-sonnet-4-5"
+
+    def test_generation_llm_temperature_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().generation_llm_temperature == pytest.approx(0.0)
+
+
+class TestAnswerGenerationSettingsOverrides:
+    def test_generation_llm_provider_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("GENERATION_LLM_PROVIDER", "openai")
+        assert Settings().generation_llm_provider == "openai"
+
+    def test_generation_llm_model_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("GENERATION_LLM_MODEL", "gpt-4-turbo")
+        assert Settings().generation_llm_model == "gpt-4-turbo"
+
+    def test_generation_llm_temperature_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("GENERATION_LLM_TEMPERATURE", "0.5")
+        assert Settings().generation_llm_temperature == pytest.approx(0.5)
+
+
+class TestAnswerGenerationSettingsValidation:
+    def test_generation_llm_provider_invalid_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("GENERATION_LLM_PROVIDER", "gemini")
+        with pytest.raises(ValidationError, match="generation_llm_provider"):
+            Settings()
+
+    def test_generation_llm_temperature_below_zero_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("GENERATION_LLM_TEMPERATURE", "-0.1")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_generation_llm_temperature_above_one_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("GENERATION_LLM_TEMPERATURE", "1.5")
+        with pytest.raises(ValidationError):
+            Settings()
+
+
 class TestCitationVerificationSettingsDefaults:
     def test_citation_judge_provider_default(self, clean_env: None) -> None:
         from src.config import Settings
