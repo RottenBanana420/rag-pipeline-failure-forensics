@@ -1,0 +1,461 @@
+[
+  {
+    "id": "qa-001",
+    "question": "What are the three teams new engineers can be assigned to at Northwind?",
+    "expected_answer": "Platform Team, Data Team, and Product Team.",
+    "category": "lookup",
+    "source_documents": ["01-onboarding-guide.md"],
+    "source_sections": ["Welcome & Team Structure"],
+    "notes": null
+  },
+  {
+    "id": "qa-002",
+    "question": "What is the first task on a new engineer's first-week checklist?",
+    "expected_answer": "Completing mandatory security training on day 1.",
+    "category": "lookup",
+    "source_documents": ["01-onboarding-guide.md"],
+    "source_sections": ["First-Week Checklist"],
+    "notes": null
+  },
+  {
+    "id": "qa-003",
+    "question": "What programming language is the API Gateway written in?",
+    "expected_answer": "Go.",
+    "category": "lookup",
+    "source_documents": ["02-architecture-overview.md"],
+    "source_sections": ["Service Inventory"],
+    "notes": null
+  },
+  {
+    "id": "qa-004",
+    "question": "Which datastore does Northwind use as its caching layer?",
+    "expected_answer": "Redis.",
+    "category": "lookup",
+    "source_documents": ["02-architecture-overview.md"],
+    "source_sections": ["Datastores"],
+    "notes": null
+  },
+  {
+    "id": "qa-005",
+    "question": "What are the four stages of Northwind's CI/CD pipeline?",
+    "expected_answer": "build, test, deploy-staging, and deploy-prod.",
+    "category": "lookup",
+    "source_documents": ["03-deployment-guide.md"],
+    "source_sections": ["Pipeline Overview"],
+    "notes": null
+  },
+  {
+    "id": "qa-006",
+    "question": "What command is used to roll back a bad deployment at Northwind?",
+    "expected_answer": "`northwind-cli rollback <service> <previous-version>`.",
+    "category": "lookup",
+    "source_documents": ["03-deployment-guide.md"],
+    "source_sections": ["Rollback Procedure"],
+    "notes": null
+  },
+  {
+    "id": "qa-007",
+    "question": "What is the name of Northwind's internal feature-flagging tool?",
+    "expected_answer": "Switchboard.",
+    "category": "lookup",
+    "source_documents": ["03-deployment-guide.md"],
+    "source_sections": ["Feature Flags"],
+    "notes": null
+  },
+  {
+    "id": "qa-008",
+    "question": "What is the response time target for a SEV3 incident?",
+    "expected_answer": "Acknowledge within 4 hours.",
+    "category": "lookup",
+    "source_documents": ["04-incident-response-runbook.md"],
+    "source_sections": ["Severity Levels"],
+    "notes": null
+  },
+  {
+    "id": "qa-009",
+    "question": "What Slack channel should be used to declare a new incident?",
+    "expected_answer": "#incidents.",
+    "category": "lookup",
+    "source_documents": ["04-incident-response-runbook.md"],
+    "source_sections": ["Declaring an Incident"],
+    "notes": null
+  },
+  {
+    "id": "qa-010",
+    "question": "What is the name of Northwind's paging tool?",
+    "expected_answer": "Signal.",
+    "category": "lookup",
+    "source_documents": ["04-incident-response-runbook.md"],
+    "source_sections": ["Declaring an Incident"],
+    "notes": null
+  },
+  {
+    "id": "qa-011",
+    "question": "How often does the on-call rotation change hands, and on what day/time?",
+    "expected_answer": "Weekly, with handoff every Monday at 10:00 AM Pacific.",
+    "category": "lookup",
+    "source_documents": ["05-on-call-rotation-policy.md"],
+    "source_sections": ["Rotation Schedule"],
+    "notes": null
+  },
+  {
+    "id": "qa-012",
+    "question": "What is the stipend for one week of on-call duty?",
+    "expected_answer": "$200.",
+    "category": "lookup",
+    "source_documents": ["05-on-call-rotation-policy.md"],
+    "source_sections": ["Compensation & Time Off"],
+    "notes": null
+  },
+  {
+    "id": "qa-013",
+    "question": "What tool is used to look up who is currently on call?",
+    "expected_answer": "Roster.",
+    "category": "lookup",
+    "source_documents": ["05-on-call-rotation-policy.md"],
+    "source_sections": ["Who Is On Call"],
+    "notes": null
+  },
+  {
+    "id": "qa-014",
+    "question": "How often are access reviews conducted at Northwind?",
+    "expected_answer": "Quarterly.",
+    "category": "lookup",
+    "source_documents": ["06-security-policy.md"],
+    "source_sections": ["Access Control Principles"],
+    "notes": null
+  },
+  {
+    "id": "qa-015",
+    "question": "What password manager is required for all Northwind employees?",
+    "expected_answer": "1Password.",
+    "category": "lookup",
+    "source_documents": ["06-security-policy.md"],
+    "source_sections": ["Credential Management"],
+    "notes": null
+  },
+  {
+    "id": "qa-016",
+    "question": "What MFA provider does Northwind use?",
+    "expected_answer": "Okta.",
+    "category": "lookup",
+    "source_documents": ["06-security-policy.md"],
+    "source_sections": ["Credential Management"],
+    "notes": null
+  },
+  {
+    "id": "qa-017",
+    "question": "How long are application logs retained?",
+    "expected_answer": "90 days.",
+    "category": "lookup",
+    "source_documents": ["07-data-retention-policy.md"],
+    "source_sections": ["Retention Periods by Data Type"],
+    "notes": null
+  },
+  {
+    "id": "qa-018",
+    "question": "How long are backups retained?",
+    "expected_answer": "35 days, on a rolling window.",
+    "category": "lookup",
+    "source_documents": ["07-data-retention-policy.md"],
+    "source_sections": ["Retention Periods by Data Type"],
+    "notes": null
+  },
+  {
+    "id": "qa-019",
+    "question": "What overrides the normal data deletion schedule?",
+    "expected_answer": "A legal hold issued by Legal.",
+    "category": "lookup",
+    "source_documents": ["07-data-retention-policy.md"],
+    "source_sections": ["Legal Holds"],
+    "notes": null
+  },
+  {
+    "id": "qa-020",
+    "question": "What is the rate limit for the Free tier of Northwind's API?",
+    "expected_answer": "Up to 60 requests per minute.",
+    "category": "lookup",
+    "source_documents": ["08-api-reference.md"],
+    "source_sections": ["Rate Limits"],
+    "notes": null
+  },
+  {
+    "id": "qa-021",
+    "question": "Which team should a new engineer contact about a problem with the Search Service, based on the onboarding guide and the architecture overview?",
+    "expected_answer": "The Data Team — the onboarding guide points to the Architecture Overview's Service Ownership Table for service ownership, which lists the Search Service as owned by the Data Team.",
+    "category": "multi_hop",
+    "source_documents": ["01-onboarding-guide.md", "02-architecture-overview.md"],
+    "source_sections": ["Local Development Setup", "Service Ownership Table"],
+    "notes": null
+  },
+  {
+    "id": "qa-022",
+    "question": "What are the three environments code moves through, and who must approve the final promotion into the last one?",
+    "expected_answer": "dev, staging, and prod. Promotion into prod requires approval from either a Staff Engineer or the current on-call Incident Commander.",
+    "category": "multi_hop",
+    "source_documents": ["02-architecture-overview.md", "03-deployment-guide.md"],
+    "source_sections": ["Environments", "Promotion Process"],
+    "notes": null
+  },
+  {
+    "id": "qa-023",
+    "question": "What is the full procedure for handling an incident caused by a bad deployment, from detection to closing the incident?",
+    "expected_answer": "Confirm the correlation using the error-rate dashboard, execute the rollback procedure (`northwind-cli rollback <service> <previous-version>`, initiated within 15 minutes), then verify error rates hold at baseline for at least 15 minutes before closing the incident.",
+    "category": "multi_hop",
+    "source_documents": ["04-incident-response-runbook.md", "03-deployment-guide.md"],
+    "source_sections": ["Bad Deploy Scenario", "Rollback Procedure"],
+    "notes": null
+  },
+  {
+    "id": "qa-024",
+    "question": "During a SEV1 incident, if the primary on-call doesn't acknowledge the page in time, who is paged next and how would you identify that person?",
+    "expected_answer": "The secondary on-call engineer is paged automatically; who that is can be looked up in Roster.",
+    "category": "multi_hop",
+    "source_documents": ["04-incident-response-runbook.md", "05-on-call-rotation-policy.md"],
+    "source_sections": ["Escalation Path", "Who Is On Call"],
+    "notes": null
+  },
+  {
+    "id": "qa-025",
+    "question": "How long is Restricted-tier user data retained?",
+    "expected_answer": "There's no fixed company-wide default — Restricted data (customer PII and payment data) is retained only as long as specified in the relevant customer contract.",
+    "category": "multi_hop",
+    "source_documents": ["06-security-policy.md", "07-data-retention-policy.md"],
+    "source_sections": ["Data Classification", "Retention Periods by Data Type"],
+    "notes": null
+  },
+  {
+    "id": "qa-026",
+    "question": "What severity should a suspected security breach be assigned, and how quickly must the team acknowledge it?",
+    "expected_answer": "At minimum a SEV2. SEV2 incidents must be acknowledged within 30 minutes.",
+    "category": "multi_hop",
+    "source_documents": ["06-security-policy.md", "04-incident-response-runbook.md"],
+    "source_sections": ["Incident Reporting", "Severity Levels"],
+    "notes": null
+  },
+  {
+    "id": "qa-027",
+    "question": "Which team owns the service backing the `/v1/notify` endpoint?",
+    "expected_answer": "The Product Team — `/v1/notify` is backed by the Notification Service, which is owned by the Product Team.",
+    "category": "multi_hop",
+    "source_documents": ["08-api-reference.md", "02-architecture-overview.md"],
+    "source_sections": ["Endpoints Overview", "Service Ownership Table"],
+    "notes": null
+  },
+  {
+    "id": "qa-028",
+    "question": "How often are the access permissions granted to a new engineer during onboarding formally reviewed afterward?",
+    "expected_answer": "Quarterly — the onboarding guide has new engineers request access via #it-help, and the Security Policy states all access grants are reviewed quarterly.",
+    "category": "multi_hop",
+    "source_documents": ["01-onboarding-guide.md", "06-security-policy.md"],
+    "source_sections": ["Access & Permissions", "Access Control Principles"],
+    "notes": null
+  },
+  {
+    "id": "qa-029",
+    "question": "Besides a Staff Engineer, who else can approve a production deployment, and what tool would you use to find out who currently holds that role?",
+    "expected_answer": "The current on-call Incident Commander; use Roster to see who that is.",
+    "category": "multi_hop",
+    "source_documents": ["03-deployment-guide.md", "05-on-call-rotation-policy.md"],
+    "source_sections": ["Promotion Process", "Who Is On Call"],
+    "notes": null
+  },
+  {
+    "id": "qa-030",
+    "question": "What does 'Confidential' data mean at Northwind, and how long is it retained once no longer actively used?",
+    "expected_answer": "Confidential data is source code and internal financial data; it's retained for 1 year after it's no longer actively used.",
+    "category": "multi_hop",
+    "source_documents": ["06-security-policy.md", "07-data-retention-policy.md"],
+    "source_sections": ["Data Classification", "Retention Periods by Data Type"],
+    "notes": null
+  },
+  {
+    "id": "qa-031",
+    "question": "If a customer reports an issue with the `/v1/search` endpoint, which of Northwind's three engineering teams should ultimately be contacted?",
+    "expected_answer": "The Data Team — `/v1/search` is backed by the Search Service, which the Architecture Overview assigns to the Data Team, one of Northwind's three engineering teams alongside Platform and Product.",
+    "category": "multi_hop",
+    "source_documents": ["08-api-reference.md", "02-architecture-overview.md", "01-onboarding-guide.md"],
+    "source_sections": ["Endpoints Overview", "Service Ownership Table", "Welcome & Team Structure"],
+    "notes": "A three-hop chain rather than a strict two-document combination, included as a heavier multi-hop example."
+  },
+  {
+    "id": "qa-032",
+    "question": "What is Northwind's parental leave policy?",
+    "expected_answer": "Not covered anywhere in the corpus — none of these documents address parental leave.",
+    "category": "no_answer",
+    "source_documents": [],
+    "source_sections": [],
+    "notes": "Plausible HR-adjacent topic, but genuinely absent from all 8 documents."
+  },
+  {
+    "id": "qa-033",
+    "question": "Which cloud provider hosts Northwind's Postgres and S3 infrastructure?",
+    "expected_answer": "Not stated anywhere in the corpus. The Architecture Overview names the datastores (Postgres, Redis, S3) but never names an underlying cloud provider.",
+    "category": "no_answer",
+    "source_documents": [],
+    "source_sections": [],
+    "notes": "S3 sounds AWS-specific but the corpus deliberately never names a provider."
+  },
+  {
+    "id": "qa-034",
+    "question": "What is the maximum payload size for a single `/v1/ingest` request?",
+    "expected_answer": "Not covered — the API Reference documents auth, rate limits, endpoints, error codes, and versioning, but never a payload size limit.",
+    "category": "no_answer",
+    "source_documents": [],
+    "source_sections": [],
+    "notes": null
+  },
+  {
+    "id": "qa-035",
+    "question": "What salary band applies to a Staff Engineer at Northwind?",
+    "expected_answer": "Not covered anywhere in the corpus.",
+    "category": "no_answer",
+    "source_documents": [],
+    "source_sections": [],
+    "notes": null
+  },
+  {
+    "id": "qa-036",
+    "question": "Does Northwind support remote work, and if so, in which countries?",
+    "expected_answer": "Not covered anywhere in the corpus.",
+    "category": "no_answer",
+    "source_documents": [],
+    "source_sections": [],
+    "notes": null
+  },
+  {
+    "id": "qa-037",
+    "question": "How are Northwind's backups encrypted?",
+    "expected_answer": "Not covered — the Data Retention Policy states a 35-day retention window for backups but says nothing about encryption method.",
+    "category": "no_answer",
+    "source_documents": [],
+    "source_sections": [],
+    "notes": null
+  },
+  {
+    "id": "qa-038",
+    "question": "What happens to the on-call stipend if a public holiday falls during someone's on-call week?",
+    "expected_answer": "Not covered — only the base $200 weekly stipend and the overnight comp-day rule are described; holidays aren't addressed.",
+    "category": "no_answer",
+    "source_documents": [],
+    "source_sections": [],
+    "notes": null
+  },
+  {
+    "id": "qa-039",
+    "question": "What linter or code style guide do Northwind engineers use?",
+    "expected_answer": "Not covered anywhere in the corpus.",
+    "category": "no_answer",
+    "source_documents": [],
+    "source_sections": [],
+    "notes": null
+  },
+  {
+    "id": "qa-040",
+    "question": "How long does it take to get a response during an incident?",
+    "expected_answer": "Depends on severity: SEV1 within 15 minutes, SEV2 within 30 minutes, SEV3 within 4 hours, SEV4 by the next business day. No single answer applies without specifying severity.",
+    "category": "ambiguous",
+    "source_documents": ["04-incident-response-runbook.md"],
+    "source_sections": ["Severity Levels"],
+    "notes": "Ambiguous because the corpus gives four different real numbers depending on severity, and the question doesn't specify one."
+  },
+  {
+    "id": "qa-041",
+    "question": "Who needs to approve a deployment?",
+    "expected_answer": "Depends on environment: staging deploys need no additional approval; production deploys require a Staff Engineer or the on-call Incident Commander. No single answer applies without specifying which environment.",
+    "category": "ambiguous",
+    "source_documents": ["03-deployment-guide.md"],
+    "source_sections": ["Promotion Process"],
+    "notes": "Both readings (staging vs. prod) are fully supported by real text."
+  },
+  {
+    "id": "qa-042",
+    "question": "What is Northwind's data retention period?",
+    "expected_answer": "No single number: logs are kept 90 days, backups 35 days, and user data retention varies by classification tier. The question doesn't specify which data type.",
+    "category": "ambiguous",
+    "source_documents": ["07-data-retention-policy.md"],
+    "source_sections": ["Retention Periods by Data Type"],
+    "notes": null
+  },
+  {
+    "id": "qa-043",
+    "question": "What is the escalation window if the on-call person doesn't respond?",
+    "expected_answer": "The corpus gives two different numbers for what reads as the same situation: the Incident Response Runbook's Signal-based auto-escalation for SEV1/SEV2 fires after 10 minutes, while the On-Call Rotation Policy's general Escalation Contacts rule says 15 minutes. The question doesn't specify which rule applies, and the corpus doesn't reconcile them.",
+    "category": "ambiguous",
+    "source_documents": ["04-incident-response-runbook.md", "05-on-call-rotation-policy.md"],
+    "source_sections": ["Escalation Path", "Escalation Contacts"],
+    "notes": "Deliberately conflicting numbers across two documents; also usable as the basis for edge case qa-047."
+  },
+  {
+    "id": "qa-044",
+    "question": "When can code be deployed to production?",
+    "expected_answer": "Could mean the approval process (a Staff Engineer or the on-call Incident Commander must sign off, at any time) or the allowed time windows (blocked after 2:00 PM Friday and during the Dec 15–Jan 2 freeze). Both are real constraints from the Deployment Guide, and the question doesn't distinguish process from timing.",
+    "category": "ambiguous",
+    "source_documents": ["03-deployment-guide.md"],
+    "source_sections": ["Promotion Process", "Deployment Windows"],
+    "notes": null
+  },
+  {
+    "id": "qa-045",
+    "question": "How is access granted to a new engineer at Northwind?",
+    "expected_answer": "Could mean the initial request process (via #it-help on day one) or the ongoing review process (quarterly access reviews). Both are real and the question doesn't specify which.",
+    "category": "ambiguous",
+    "source_documents": ["01-onboarding-guide.md", "06-security-policy.md"],
+    "source_sections": ["Access & Permissions", "Access Control Principles"],
+    "notes": null
+  },
+  {
+    "id": "qa-046",
+    "question": "Is a production deployment allowed to start at exactly 2:00 PM on a Friday?",
+    "expected_answer": "Yes — the Deployment Guide states deploys \"may not be started after 2:00 PM Pacific on Fridays,\" which reads as inclusive of 2:00 PM itself, so a deploy starting exactly at 2:00 PM is the last allowed moment, not yet \"after\" it.",
+    "category": "edge_case",
+    "source_documents": ["03-deployment-guide.md"],
+    "source_sections": ["Deployment Windows"],
+    "notes": "Boundary test on an inclusive/exclusive cutoff wording."
+  },
+  {
+    "id": "qa-047",
+    "question": "If a SEV1 incident is also a security incident, how many business days does the team have to file the postmortem?",
+    "expected_answer": "The corpus conflicts: the Incident Response Runbook gives SEV1/SEV2 postmortems 3 business days, while the Security Policy gives security-incident postmortems 5 business days. Since a security SEV1 satisfies both rules, the corpus does not resolve which number governs.",
+    "category": "edge_case",
+    "source_documents": ["04-incident-response-runbook.md", "06-security-policy.md"],
+    "source_sections": ["Postmortem Requirements", "Incident Reporting"],
+    "notes": "Deliberate conflicting-fact edge case between two documents."
+  },
+  {
+    "id": "qa-048",
+    "question": "If a SEV1 incident's primary on-call doesn't acknowledge the page, exactly how many minutes pass before the secondary is paged?",
+    "expected_answer": "The corpus gives two different numbers for what appears to be the same rule even with severity specified: the Incident Response Runbook says Signal auto-escalates SEV1/SEV2 pages to the secondary after 10 minutes, while the On-Call Rotation Policy's general Escalation Contacts rule says 15 minutes. The two documents conflict.",
+    "category": "edge_case",
+    "source_documents": ["04-incident-response-runbook.md", "05-on-call-rotation-policy.md"],
+    "source_sections": ["Escalation Path", "Escalation Contacts"],
+    "notes": "Same underlying conflict as qa-043, but phrased with severity pinned down to test whether that resolves the ambiguity (it doesn't)."
+  },
+  {
+    "id": "qa-049",
+    "question": "Is a shift-swap request submitted 47 hours before the shift allowed?",
+    "expected_answer": "No — the On-Call Rotation Policy requires swap requests at least 48 hours in advance (barring genuine emergencies), and 47 hours falls just short of that threshold.",
+    "category": "edge_case",
+    "source_documents": ["05-on-call-rotation-policy.md"],
+    "source_sections": ["Swapping Shifts"],
+    "notes": "Boundary test one unit below the stated threshold."
+  },
+  {
+    "id": "qa-050",
+    "question": "Would a Pro-tier customer's 600th API request in one minute succeed?",
+    "expected_answer": "Yes — the API Reference states the Pro tier allows up to 600 requests per minute, so the 600th request is within the limit; only the 601st request in that same minute would receive a 429 error.",
+    "category": "edge_case",
+    "source_documents": ["08-api-reference.md"],
+    "source_sections": ["Rate Limits", "Error Codes"],
+    "notes": "Boundary test exactly at the stated limit."
+  },
+  {
+    "id": "qa-051",
+    "question": "A SEV1 incident is declared at 1:55 PM on a Friday during an in-progress production deployment, and the primary on-call doesn't acknowledge the page. What should happen regarding the deploy, the escalation, and the Friday deploy cutoff?",
+    "expected_answer": "The in-progress deploy should be handled via the Incident Response Runbook's Bad Deploy Scenario: confirm via the error-rate dashboard, roll back per the Deployment Guide's rollback procedure, then verify baseline holds for 15 minutes. Escalation to the secondary on-call should occur somewhere between 10 and 15 minutes depending on which escalation rule is applied (the Runbook's 10-minute Signal auto-escalation vs. the On-Call Policy's 15-minute general rule — the same unresolved conflict as qa-043/qa-048). The 2:00 PM Friday cutoff only blocks starting new production deploys; since the deploy was already in progress before that cutoff and the incident was declared at 1:55 PM, the freeze window doesn't itself change how the incident is handled.",
+    "category": "edge_case",
+    "source_documents": ["04-incident-response-runbook.md", "03-deployment-guide.md", "05-on-call-rotation-policy.md"],
+    "source_sections": ["Bad Deploy Scenario", "Deployment Windows", "Escalation Path", "Escalation Contacts"],
+    "notes": "Compound stress case chaining three documents; heavier than a standard multi-hop question."
+  }
+]
