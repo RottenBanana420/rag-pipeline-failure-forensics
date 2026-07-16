@@ -37,7 +37,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | 3 | Tracing & Instrumentation | Done (trace-per-request orchestrator wired for the query dashboard; a Phase 7 API-level orchestrator is still planned) |
 | 4 | Backward Failure Analysis | Done |
 | 5 | Visual Explorers & Frontend | Done |
-| 6 | Evaluation Framework | Planned |
+| 6 | Evaluation Framework | In Progress |
 | 7 | FastAPI, Docker, Portfolio Polish | Planned |
 
 ### Phase 1 Progress
@@ -97,3 +97,14 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | Flagging interface: mark any trace "bad output" (including successful ones), confirm or override the root-cause diagnosis, persist the verdict for the eval loop (`flags.py`) | Done |
 | Query dashboard: ask a question, see the cited answer, confidence breakdown, and hybrid-vs-dense-only retrieval toggle (`app_pages/query_dashboard.py`, `query_service.py`) | Done |
 | Trace view + query dashboard combined into one `st.navigation` multipage app (`streamlit run src/frontend/app.py`) | Done |
+
+### Phase 6 Progress
+
+| Component | Status |
+|-----------|--------|
+| Golden Q&A dataset: 51 hand-written pairs (`data/golden/qa_dataset.json`) grounded in a fictional 8-doc corpus (`data/golden/corpus/`, since the real corpus is still empty) — lookup, multi-hop, no-answer, ambiguous, and edge-case categories | Done |
+| Automated eval metrics (answer correctness, faithfulness, retrieval relevance, citation accuracy) | Planned |
+| Chunking-strategy / retrieval-config comparison report | Planned |
+| Auto-generate eval cases from confirmed human flags | Planned |
+| Regression tracking | Planned |
+| Failure analytics dashboard | Planned |
