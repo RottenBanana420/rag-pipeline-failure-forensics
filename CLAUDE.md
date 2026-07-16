@@ -314,6 +314,13 @@ tests/
                       # tmp_path, no mocks) — graph_render.py/detail_panel.py/diff_panel.py/app.py/
                       # app_pages/*.py are Streamlit UI and verified manually instead
                       # (`streamlit run src/frontend/app.py`), not by automated tests
+  unit/evaluation/    # test_golden_dataset.py — structural integrity checks on
+                      # data/golden/qa_dataset.json (count, unique/well-formed ids,
+                      # closed category enum with full coverage, every source_documents/
+                      # source_sections reference resolves to a real corpus file/heading);
+                      # no src/evaluation/ code exists yet to test — this guards the data
+                      # artifact itself against drift as entries are hand-edited or,
+                      # later, auto-appended from confirmed flags (Phase 6 item 4)
   integration/        # End-to-end pipeline tests against real ChromaDB
 data/
   raw/                # Uploaded source documents
