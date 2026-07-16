@@ -13,9 +13,11 @@ from src.frontend.view_models import (
     NODE_STATUS_COLOR,
     build_graph_view_model,
     build_span_diff_view_model,
+    cited_chunk_indices,
     node_status,
     root_cause_span_id_from_diagnosis,
 )
+from src.generation.citation_verifier import CitationVerificationResult
 from src.tracing.models import PipelineStep, Span, Trace
 
 
@@ -300,3 +302,33 @@ class TestBuildSpanDiffViewModel:
         assert vm.produced_segments is not None
         assert "".join(s.text for s in vm.expected_segments) == expected
         assert "".join(s.text for s in vm.produced_segments) == span.output
+
+
+def make_citation_result(
+    chunk_indices: list[int], supported: bool = True
+) -> CitationVerificationResult:
+    return CitationVerificationResult(
+        claim_text="claim",
+        chunk_indices=chunk_indices,
+        supported=supported,
+        reasoning="reasoning",
+    )
+
+
+class TestCitedChunkIndices:
+    def test_empty_results_returns_empty_list(self):
+        assert cited_chunk_indices([]) == []
+
+    def test_returns_sorted_deduplicated_indices(self):
+        results = [
+            make_citation_result([3]),
+            make_citation_result([1, 3]),
+            make_citation_result([2]),
+        ]
+
+        assert cited_chunk_indices(results) == [1, 2, 3]
+
+    def test_includes_unsupported_citations_indices_too(self):
+        results = [make_citation_result([5], supported=False)]
+
+        assert cited_chunk_indices(results) == [5]

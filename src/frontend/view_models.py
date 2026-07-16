@@ -22,6 +22,7 @@ from src.tracing.models import PipelineStep, Span, Trace
 
 if TYPE_CHECKING:
     from src.analysis.root_cause import RootCauseDiagnosis
+    from src.generation.citation_verifier import CitationVerificationResult
 
 NodeStatus = Literal["healthy", "low_confidence", "root_cause"]
 
@@ -105,6 +106,19 @@ def root_cause_span_id_from_diagnosis(
 ) -> str | None:
     """Extract the root-cause span's id from a diagnosis, if any."""
     return diagnosis.root_cause_span.span_id if diagnosis is not None else None
+
+
+def cited_chunk_indices(
+    citation_results: list[CitationVerificationResult],
+) -> list[int]:
+    """Sorted, deduplicated chunk indices cited across all citation results.
+
+    Used to render one "jump to source" button per distinct cited chunk in
+    the query dashboard, regardless of how many claims cite it.
+    """
+    return sorted(
+        {index for result in citation_results for index in result.chunk_indices}
+    )
 
 
 _WHITESPACE_RE = re.compile(r"(\s+)")
