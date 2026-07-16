@@ -1,5 +1,49 @@
 # Architecture Overview
 
+## 2026-07-15 — Phase 5: Query Dashboard (Complete)
+
+### The First Generation Orchestrator: Ask a Question, Get a Cited Answer, See the Confidence Behind It
+
+`docs/PROJECT_SPEC.md` (Phase 5, item 4) asks for a dashboard where a user asks a question and sees the generated answer with clickable citations, ranked retrieved chunks, a per-dimension confidence breakdown, and a hybrid-vs-dense-only comparison toggle. Unlike every other Phase 5 item, this one couldn't be built as a UI over existing pieces: no module anywhere called an LLM to produce the actual `[N]`-cited answer text, and no orchestrator wired retrieval → generation → citation verification → confidence scoring → tracing together for a live request. This entry builds both the missing pipeline and the UI over it.
+
+**`src/generation/answer_generator.py` (+ `providers/answer_generator_anthropic.py`/`answer_generator_openai.py`):** `AnswerGeneratorProtocol` (`generate(prompt) -> str`, `provider_id`) + `make_answer_generator(settings)`, the same lazy-import factory pattern as `make_citation_judge`/`make_completeness_judge`. Providers use each SDK's plain `messages.create`/`chat.completions.create` (not `.parse`/structured output — an answer is free text, not a verdict), wrapped in `span("generation", ...)` with `llm_prompt`/`token_count` set, same as the judge providers' inner spans.
+
+**`src/frontend/query_service.py` (`ask_question`, `build_hybrid_retriever`):** The second per-feature orchestrator in `src/frontend/`, mirroring `diagnosis_service.py`. `ask_question(query, retriever, settings)` runs the full pipeline inside `collect_spans()`, then always calls `persist_trace` — "success" or "degraded" (fallback fired) on completion, "failure" (with whatever spans completed) if any step raised, re-raised afterward. This makes the query dashboard the first live caller of `persist_trace` — every question asked becomes a real, inspectable `Trace` in the existing trace view. `build_hybrid_retriever` wires an embedder, vector store, BM25 index, and optional reranker into a `HybridRetriever`; it holds no caching of its own (same rule `run_diagnosis` follows), so the page wraps it in `@st.cache_resource`.
+
+**Multipage restructuring (`app.py`, `app_pages/`):** Adding a second, genuinely different screen justified real navigation. `src/frontend/app.py` became a ~25-line `st.navigation`/`st.Page` entry (`app_pages/` per Streamlit's current guidance, not the legacy `pages/` auto-discovery it conflicts with); the former single-page trace view body moved to `app_pages/trace_view.py` unchanged aside from removing its own now-illegal second `st.set_page_config` call and reading `st.session_state["preselect_trace_id"]` to default its trace selectbox when arriving from the dashboard's "View full trace" button. `streamlit run src/frontend/app.py` is unchanged.
+
+**Confidence scoring runs automatically, not gated like root-cause diagnosis:** Citation verification and completeness judging fire on every `ask_question` call — the confidence breakdown is the dashboard's core displayed output, not an optional deep-dive, so gating it behind a second click would mean shipping an answer with no confidence signal by default.
+
+**Fallback wiring:** When `build_fallback_response` fires (retrieval confidence below `settings.retrieval_confidence_threshold`), the dashboard shows the fallback message instead of the generated answer, but `QueryResult.answer_text`/`citation_results`/`confidence` are computed and persisted regardless — engineers can see what the model would have answered.
+
+**Hybrid-vs-dense-only comparison:** Toggling it triggers one extra `DenseRetriever.retrieve()` call for a side-by-side chunk list — no second generation call, no second confidence score — cached per-query in `st.session_state` and run outside `collect_spans()` (a UI exploration aid, not part of the canonical persisted request).
+
+**Settings additions:**
+- `generation_llm_provider` (default `"anthropic"`), `generation_llm_model` (default `"claude-sonnet-4-5"`), `generation_llm_temperature` (default `0.0`)
+
+**Public API:**
+
+```python
+from src.config import settings
+from src.frontend.query_service import ask_question, build_hybrid_retriever
+
+bundle = build_hybrid_retriever(settings)  # expensive — cache with @st.cache_resource
+result = ask_question("How often does on-call rotate?", bundle.hybrid, settings)
+
+result.answer_text        # raw generated text, always present
+result.fallback            # FallbackResponse | None — UI prefers this over answer_text when set
+result.citation_results    # list[CitationVerificationResult]
+result.confidence          # ConfidenceScore (retrieval / citation / completeness / composite)
+result.trace_id            # inspectable in the trace view immediately
+```
+
+**Design notes:**
+- Citations are rendered as plain `[N]` markers with a row of "jump to source" buttons below (`cited_chunk_indices`, `view_models.py`) rather than true anchor-scroll — Streamlit has no in-page DOM scroll-to primitive. A deliberate, pragmatic reading of "clickable citations linking to source chunk."
+- `ask_question`'s exception path persists a `"failure"` trace before re-raising, so a crashed question is still inspectable, not just an opaque error.
+- See `docs/DECISIONS.md` (2026-07-15 entry) for the full design rationale, including why confidence scoring isn't gated like root-cause diagnosis and why the hybrid/dense-only comparison stays outside the persisted trace.
+
+---
+
 ## 2026-07-12 — Phase 5: Flagging Interface (Complete)
 
 ### Mark Any Trace "Bad Output", Confirm or Override the Diagnosis

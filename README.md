@@ -10,14 +10,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env   # embeddings/retrieval default to local sentence_transformers (no key needed),
-                        # but ANTHROPIC_API_KEY is required by default too — all five LLM-judge
-                        # providers (citation, completeness, root-cause, failure-category,
-                        # evidence-chain) default to anthropic. `pytest` itself doesn't need a real
-                        # key (unit tests mock the judges).
+                        # but ANTHROPIC_API_KEY is required by default too — answer generation and
+                        # all five LLM-judge providers (citation, completeness, root-cause,
+                        # failure-category, evidence-chain) default to anthropic. `pytest` itself
+                        # doesn't need a real key (unit tests mock generation/the judges).
 pytest
 ```
 
-To also run the trace/diff view (Streamlit):
+To also run the frontend (query dashboard + trace/diff view, Streamlit):
 
 ```bash
 pip install -e ".[dev,frontend]"
@@ -34,9 +34,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 |-------|-------|--------|
 | 1 | Ingestion, Chunking, Hybrid Retrieval | Done |
 | 2 | Generation with Citations | Done |
-| 3 | Tracing & Instrumentation | In Progress (trace-per-request orchestrator not yet wired) |
+| 3 | Tracing & Instrumentation | Done (trace-per-request orchestrator wired for the query dashboard; a Phase 7 API-level orchestrator is still planned) |
 | 4 | Backward Failure Analysis | Done |
-| 5 | Visual Explorers & Frontend | In Progress (trace view, diff view, and flagging interface done; query dashboard not started) |
+| 5 | Visual Explorers & Frontend | Done |
 | 6 | Evaluation Framework | Planned |
 | 7 | FastAPI, Docker, Portfolio Polish | Planned |
 
@@ -76,7 +76,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | Confidence scoring (1-5) populated on retrieval/ranking/verification/generation spans | Done |
 | JSON trace file writer (`src/tracing/storage.py`) | Done |
 | SQLite trace index (`src/tracing/index.py`) | Done |
-| Trace-per-request orchestrator | Planned |
+| Trace-per-request orchestrator (`src/frontend/query_service.py`'s `ask_question`, driving the query dashboard) | Done |
 
 ### Phase 4 Progress
 
@@ -90,9 +90,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 
 | Component | Status |
 |-----------|--------|
-| Trace view: color-coded flow graph, click-through span detail panel (`streamlit run src/frontend/app.py`) | Done |
+| Trace view: color-coded flow graph, click-through span detail panel (`app_pages/trace_view.py`) | Done |
 | On-demand root-cause diagnosis from the trace view (`diagnosis_service.py`) | Done |
 | Diff view: received/produced/should-have-produced comparison, word-level divergence highlighting (`diff_panel.py`) | Done |
 | Per-span human-correction persistence (`corrections.py`) | Done |
 | Flagging interface: mark any trace "bad output" (including successful ones), confirm or override the root-cause diagnosis, persist the verdict for the eval loop (`flags.py`) | Done |
-| Query dashboard (ask a question, see citations/confidence/retrieval-mode toggle) | Planned |
+| Query dashboard: ask a question, see the cited answer, confidence breakdown, and hybrid-vs-dense-only retrieval toggle (`app_pages/query_dashboard.py`, `query_service.py`) | Done |
+| Trace view + query dashboard combined into one `st.navigation` multipage app (`streamlit run src/frontend/app.py`) | Done |
