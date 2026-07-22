@@ -67,5 +67,14 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "ROOT_CAUSE_JUDGE_MODEL",
         "ROOT_CAUSE_JUDGE_TEMPERATURE",
         "ROOT_CAUSE_QUALITY_THRESHOLD",
+        "ANSWER_CORRECTNESS_JUDGE_PROVIDER",
+        "ANSWER_CORRECTNESS_JUDGE_MODEL",
+        "ANSWER_CORRECTNESS_JUDGE_TEMPERATURE",
+        "FAITHFULNESS_JUDGE_PROVIDER",
+        "FAITHFULNESS_JUDGE_MODEL",
+        "FAITHFULNESS_JUDGE_TEMPERATURE",
+        "EVAL_OUTPUT_DIR",
+        "EVAL_CHROMA_PERSIST_DIR",
+        "EVAL_REGRESSION_THRESHOLD",
     ]:
         monkeypatch.delenv(var, raising=False)

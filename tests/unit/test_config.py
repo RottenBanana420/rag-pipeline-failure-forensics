@@ -819,3 +819,228 @@ class TestChunkingSettingsValidation:
         monkeypatch.setenv("CHUNK_OVERLAP", "100")
         with pytest.raises(ValidationError):
             Settings()
+
+
+class TestAnswerCorrectnessSettingsDefaults:
+    def test_answer_correctness_judge_provider_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().answer_correctness_judge_provider == "anthropic"
+
+    def test_answer_correctness_judge_model_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().answer_correctness_judge_model == "claude-sonnet-4-5"
+
+    def test_answer_correctness_judge_temperature_default(
+        self, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        assert Settings().answer_correctness_judge_temperature == pytest.approx(0.0)
+
+
+class TestAnswerCorrectnessSettingsOverrides:
+    def test_answer_correctness_judge_provider_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ANSWER_CORRECTNESS_JUDGE_PROVIDER", "openai")
+        assert Settings().answer_correctness_judge_provider == "openai"
+
+    def test_answer_correctness_judge_model_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ANSWER_CORRECTNESS_JUDGE_MODEL", "gpt-4-turbo")
+        assert Settings().answer_correctness_judge_model == "gpt-4-turbo"
+
+    def test_answer_correctness_judge_temperature_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("ANSWER_CORRECTNESS_JUDGE_TEMPERATURE", "0.5")
+        assert Settings().answer_correctness_judge_temperature == pytest.approx(0.5)
+
+
+class TestAnswerCorrectnessSettingsValidation:
+    def test_answer_correctness_judge_provider_invalid_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("ANSWER_CORRECTNESS_JUDGE_PROVIDER", "gemini")
+        with pytest.raises(ValidationError, match="answer_correctness_judge_provider"):
+            Settings()
+
+    def test_answer_correctness_judge_temperature_below_zero_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("ANSWER_CORRECTNESS_JUDGE_TEMPERATURE", "-0.1")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_answer_correctness_judge_temperature_above_one_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("ANSWER_CORRECTNESS_JUDGE_TEMPERATURE", "1.5")
+        with pytest.raises(ValidationError):
+            Settings()
+
+
+class TestFaithfulnessSettingsDefaults:
+    def test_faithfulness_judge_provider_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().faithfulness_judge_provider == "anthropic"
+
+    def test_faithfulness_judge_model_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().faithfulness_judge_model == "claude-sonnet-4-5"
+
+    def test_faithfulness_judge_temperature_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().faithfulness_judge_temperature == pytest.approx(0.0)
+
+
+class TestFaithfulnessSettingsOverrides:
+    def test_faithfulness_judge_provider_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("FAITHFULNESS_JUDGE_PROVIDER", "openai")
+        assert Settings().faithfulness_judge_provider == "openai"
+
+    def test_faithfulness_judge_model_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("FAITHFULNESS_JUDGE_MODEL", "gpt-4-turbo")
+        assert Settings().faithfulness_judge_model == "gpt-4-turbo"
+
+    def test_faithfulness_judge_temperature_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("FAITHFULNESS_JUDGE_TEMPERATURE", "0.5")
+        assert Settings().faithfulness_judge_temperature == pytest.approx(0.5)
+
+
+class TestFaithfulnessSettingsValidation:
+    def test_faithfulness_judge_provider_invalid_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("FAITHFULNESS_JUDGE_PROVIDER", "gemini")
+        with pytest.raises(ValidationError, match="faithfulness_judge_provider"):
+            Settings()
+
+    def test_faithfulness_judge_temperature_below_zero_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("FAITHFULNESS_JUDGE_TEMPERATURE", "-0.1")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_faithfulness_judge_temperature_above_one_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("FAITHFULNESS_JUDGE_TEMPERATURE", "1.5")
+        with pytest.raises(ValidationError):
+            Settings()
+
+
+class TestEvalHarnessSettingsDefaults:
+    def test_eval_output_dir_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().eval_output_dir == Path("./data/eval/runs")
+
+    def test_eval_chroma_persist_dir_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().eval_chroma_persist_dir == Path("./data/eval/chroma")
+
+    def test_eval_regression_threshold_default(self, clean_env: None) -> None:
+        from src.config import Settings
+
+        assert Settings().eval_regression_threshold == pytest.approx(0.05)
+
+
+class TestEvalHarnessSettingsOverrides:
+    def test_eval_output_dir_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("EVAL_OUTPUT_DIR", "/tmp/eval-runs")
+        assert Settings().eval_output_dir == Path("/tmp/eval-runs")
+
+    def test_eval_chroma_persist_dir_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("EVAL_CHROMA_PERSIST_DIR", "/tmp/eval-chroma")
+        assert Settings().eval_chroma_persist_dir == Path("/tmp/eval-chroma")
+
+    def test_eval_regression_threshold_env_override(
+        self, monkeypatch: pytest.MonkeyPatch, clean_env: None
+    ) -> None:
+        from src.config import Settings
+
+        monkeypatch.setenv("EVAL_REGRESSION_THRESHOLD", "0.1")
+        assert Settings().eval_regression_threshold == pytest.approx(0.1)
+
+
+class TestEvalHarnessSettingsValidation:
+    def test_eval_regression_threshold_negative_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("EVAL_REGRESSION_THRESHOLD", "-0.1")
+        with pytest.raises(ValidationError):
+            Settings()
+
+    def test_eval_regression_threshold_above_one_raises(
+        self, clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from pydantic import ValidationError
+
+        from src.config import Settings
+
+        monkeypatch.setenv("EVAL_REGRESSION_THRESHOLD", "1.5")
+        with pytest.raises(ValidationError):
+            Settings()

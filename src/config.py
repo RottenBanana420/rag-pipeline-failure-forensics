@@ -124,6 +124,25 @@ class Settings(BaseSettings):
     evidence_chain_judge_model: str = Field(default="claude-sonnet-4-5")
     evidence_chain_judge_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
 
+    # Answer correctness judging (LLM-as-judge against the golden expected_answer)
+    answer_correctness_judge_provider: Literal["anthropic", "openai"] = Field(
+        default="anthropic"
+    )
+    answer_correctness_judge_model: str = Field(default="claude-sonnet-4-5")
+    answer_correctness_judge_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    # Faithfulness judging (per-claim groundedness against the full retrieved context)
+    faithfulness_judge_provider: Literal["anthropic", "openai"] = Field(
+        default="anthropic"
+    )
+    faithfulness_judge_model: str = Field(default="claude-sonnet-4-5")
+    faithfulness_judge_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    # Eval harness (Phase 6: automated metrics over data/golden/qa_dataset.json)
+    eval_output_dir: Path = Field(default=Path("./data/eval/runs"))
+    eval_chroma_persist_dir: Path = Field(default=Path("./data/eval/chroma"))
+    eval_regression_threshold: float = Field(default=0.05, ge=0.0, le=1.0)
+
     # Data directories
     raw_data_dir: Path = Field(default=Path("./data/raw"))
     processed_data_dir: Path = Field(default=Path("./data/processed"))
