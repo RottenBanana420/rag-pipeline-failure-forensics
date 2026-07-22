@@ -1,5 +1,49 @@
 # Architecture Overview
 
+## 2026-07-15 — Phase 6: Automated Eval Metrics (Complete)
+
+### Four Metrics Per Golden Test Case, Three New Judges, One Deterministic Check
+
+`docs/PROJECT_SPEC.md` (Phase 6, item 2) asks for four metrics per golden test case: answer correctness (LLM-as-judge against the golden `expected_answer`), faithfulness (are all claims grounded in retrieved context?), retrieval relevance (were the right chunks retrieved?), and citation accuracy (do citations support claims?) — run on demand and tracked over time to spot regressions. Citation accuracy already existed (`verify_citations`); the other three are new.
+
+**Answer correctness (`src/evaluation/answer_correctness.py` + `providers/answer_correctness_judge_{anthropic,openai}.py`):** `CorrectnessVerdict(correct: bool, reasoning: str)` — a boolean verdict, matching the convention every other judge in this codebase uses (`JudgeVerdict`, `CompletenessVerdict`), not `StepQualityVerdict`'s 1-5 scale, which exists specifically for span-transformation quality in root-cause walking, a different use case. One judge call per test case (`judge(question, expected_answer, actual_answer)`); `score_answer_correctness` is a thin, *untraced* pass-through — unlike `verify_citations`/`score_faithfulness`, there's no parsing/aggregation logic here worth its own wrapper span, just a single delegated call. Provider spans use step `"analysis"`, parallel to `step_quality_judge`'s use of `"analysis"` for post-hoc judgments against a reference unavailable during a live request.
+
+**Faithfulness (`src/evaluation/faithfulness.py` + `providers/faithfulness_judge_{anthropic,openai}.py`):** broader than citation accuracy — checks *every* claim in the answer, not just the `[N]`-marked ones. `split_into_claims` is a naive sentence split (`.`/`!`/`?`), not `citation_parser`'s marker-aware logic, since claims here have no citation index to anchor on. Each claim is judged against the full concatenated context (`"\n\n".join(hit.text for hit in hits)` — all hits, not just whichever chunk a citation happened to reference), mirroring `verify_citations`'s per-claim loop. `FaithfulnessVerdict(grounded: bool, reasoning: str)`; `score_faithfulness` aggregates `sum(grounded)/len(claims)`, returning `score=None` (not 0) if `hits` is empty, if no claims parse, or if `answer_text` is exactly the model's canonical `INSUFFICIENT_CONTEXT_RESPONSE` fallback string — a correct "I don't know" refusal is not a factual claim to check for groundedness, and without this check a strict judge could score a textbook-correct `no_answer`-category answer as unfaithful (found during post-implementation review, see `docs/DECISIONS.md`'s 2026-07-16 entry). Same empty-input short-circuit convention as `verify_citations`. Provider spans use step `"verification"`, parallel to citation verification (also a groundedness check).
+
+**Retrieval relevance (`src/evaluation/retrieval_relevance.py`):** the one metric that's deterministic, not judge-backed — `VectorStoreHit`/`Chunk` already carry `source_path`/`section_heading`, which map directly onto the golden dataset's `source_documents`/`source_sections` (confirmed parallel arrays, paired by index). `score_retrieval_relevance` computes recall: `len(expected_pairs & retrieved_pairs) / len(expected_pairs)`. A real bug risk caught during implementation: `VectorStoreHit.source_path` is a full path (`str(Path)`, see `src/ingestion/loader.py`), while the golden dataset stores bare filenames — comparison uses `Path(hit.source_path).name`, not raw string equality. Returns `score=None` (not 0 or 1) when there are no expected pairs (`no_answer` category) — nothing to retrieve correctly, so forcing a value would distort aggregates.
+
+**The corpus-indexing gap (`src/evaluation/corpus.py`):** the golden corpus had never been indexed anywhere — `HybridRetriever.retrieve()` would have returned nothing for all 51 cases. `scripts/seed_corpus.py` (Phase 1's own ingestion CLI) remains a stub and out of scope here; instead, `ensure_golden_corpus_indexed(settings, corpus_dir=CORPUS_DIR)` calls the existing `DocumentLoader`/`Chunker`/`Indexer` primitives directly, idempotent via `vector_store.count() > 0`. Callers pass `settings.model_copy(update={"chroma_persist_dir": settings.eval_chroma_persist_dir})` — a new isolated directory (`./data/eval/chroma`, default), never production `./data/chroma`, consistent with how the golden corpus is already kept separate from `data/raw/`. `BM25Store` derives its pickle path from `chroma_persist_dir`'s parent, so this isolates BM25 for free too (`./data/eval/bm25_index.pkl`).
+
+**Orchestration (`src/evaluation/runner.py`, `regression_tracker.py`, `scripts/run_eval.py`):** `run_test_case` retrieves, generates, then scores all four metrics per case, catching any exception into `TestCaseResult.error` so one API hiccup doesn't abort a 51-case run. Deliberately **not** wrapped in `collect_spans()`/`persist_trace` — batch eval runs stay out of the production trace store, since 51 traces per run would conflate with live request traces in the trace-view UI; `span()` calls inside judge providers are harmless no-ops without an active sink. `aggregate` computes overall + per-category means, skipping `None` scores rather than treating them as 0. `regression_tracker.py` persists one `EvalReport` JSON per run under `eval_output_dir` (default `./data/eval/runs/`), named by a lexicographically-sortable UTC timestamp (no separate index file needed); `compare_reports` flags any metric (overall or per-category) that dropped by more than `eval_regression_threshold` (default `0.05`) against the immediately-previous run. `scripts/run_eval.py` is the CLI entry point (`--category`/`--limit`/`--output-dir`), exiting non-zero on any regression or per-case error.
+
+**Settings additions:**
+- `answer_correctness_judge_provider`/`_model`/`_temperature`, `faithfulness_judge_provider`/`_model`/`_temperature` (same three-field pattern as every other judge)
+- `eval_output_dir` (default `./data/eval/runs`), `eval_chroma_persist_dir` (default `./data/eval/chroma`), `eval_regression_threshold` (default `0.05`)
+
+**Public API:**
+
+```python
+from src.config import Settings
+from src.evaluation.corpus import ensure_golden_corpus_indexed
+from src.evaluation.dataset import filter_cases, load_golden_dataset
+from src.evaluation.runner import aggregate, run_eval
+from src.frontend.query_service import build_hybrid_retriever
+
+settings = Settings()
+eval_settings = settings.model_copy(update={"chroma_persist_dir": settings.eval_chroma_persist_dir})
+ensure_golden_corpus_indexed(eval_settings)
+
+cases = filter_cases(load_golden_dataset(), category="lookup", limit=5)
+results = run_eval(cases, build_hybrid_retriever(eval_settings).hybrid, ...)
+overall, by_category = aggregate(results)
+```
+
+**Design notes:**
+- Citation accuracy is not reimplemented — `runner.py` calls `make_citation_judge`/`verify_citations` directly.
+- See `docs/DECISIONS.md` (2026-07-15 entry) for the full design rationale, including why the two new judges follow the boolean-verdict convention over a graded scale, and why eval runs deliberately don't persist traces.
+
+---
+
 ## 2026-07-15 — Phase 6: Golden Q&A Dataset (Complete)
 
 ### Ground Truth Before an Eval Runner Exists
@@ -992,14 +1036,22 @@ src/
                       # providers/        # step_quality_judge_anthropic.py, step_quality_judge_openai.py,
                       #                   # failure_category_judge_anthropic.py, failure_category_judge_openai.py,
                       #                   # evidence_chain_judge_anthropic.py, evidence_chain_judge_openai.py
-  evaluation/         # Golden dataset runner, metric calculators, regression tracker [planned, Phase 6]
+  evaluation/         # dataset.py (GoldenCase/load_golden_dataset/filter_cases), corpus.py
+                      # (ensure_golden_corpus_indexed — isolated eval Chroma dir), retrieval_relevance.py
+                      # (deterministic metric), answer_correctness.py + faithfulness.py (+ providers/,
+                      # LLM-as-judge, same lazy-import factory pattern as generation/analysis judges),
+                      # runner.py (run_test_case/run_eval/aggregate), regression_tracker.py
+                      # (save_report/load_latest_report/compare_reports) [Phase 6, item 2 — COMPLETE]
   api/                # FastAPI app, route handlers [planned, Phase 7]
   frontend/           # Streamlit trace view + diff view (complete; see "Phase 5: Trace View &
                       # Diff View" entry, below) — app.py, view_models.py, graph_render.py,
                       # detail_panel.py, diagnosis_service.py, diff_panel.py, corrections.py
 scripts/
   seed_corpus.py      # Index sample docs for local testing [stub, Phase 1 follow-up]
-  run_eval.py         # Execute full eval suite and print metrics [stub, Phase 6]
+  run_eval.py         # CLI over src/evaluation/ — builds the eval-isolated retriever/judges once,
+                      # runs all (or --category/--limit-filtered) golden cases, prints a summary
+                      # table, saves an EvalReport, and flags regressions vs. the previous run
+                      # [Phase 6, item 2 — COMPLETE]
 tests/
   fixtures/           # Sample files (sample.md, sample.txt, sample.html) + PDF generator
   unit/ingestion/     # Unit tests for models, loader, storage

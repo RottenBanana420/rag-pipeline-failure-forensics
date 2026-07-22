@@ -103,7 +103,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PROJECT_SPEC.md](docs
 | Component | Status |
 |-----------|--------|
 | Golden Q&A dataset: 51 hand-written pairs (`data/golden/qa_dataset.json`) grounded in a fictional 8-doc corpus (`data/golden/corpus/`, since the real corpus is still empty) — lookup, multi-hop, no-answer, ambiguous, and edge-case categories | Done |
-| Automated eval metrics (answer correctness, faithfulness, retrieval relevance, citation accuracy) | Planned |
+| Automated eval metrics: answer correctness + faithfulness (new LLM-as-judge modules), retrieval relevance (deterministic), citation accuracy (reuses `verify_citations`) — run via `python scripts/run_eval.py` (`src/evaluation/`) | Done |
 | Chunking-strategy / retrieval-config comparison report | Planned |
 | Auto-generate eval cases from confirmed human flags | Planned |
 | Regression tracking | Planned |
